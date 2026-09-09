@@ -43,6 +43,7 @@ def main():
     out["来源健康检查"] = "PASS" if audit.exists() and src_total > 0 else "FAIL"
     out["  证据"] = f"audit JSON={'有' if audit.exists() else '无'} | sources={src_total} | disabled(非删除)={del_cnt}"
     # 7 AI OFF 核心: 无 LLM 客户端依赖, 规则模块可独立运行
+    sys.path.insert(0, str(PROJ))
     import importlib.util
     mods = ["evidence", "sourcesvc"]
     ok = all(importlib.util.find_spec(f"news.{m}") is not None for m in mods)

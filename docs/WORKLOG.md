@@ -75,3 +75,9 @@ admin / <管理员密码已重置，请勿发布>（已一次性交付; 建议�
 ## 2026-09-09 地域扩容 +12 源（52→64）
 - 新增: 中新网/GNews大陆/台湾GNews/SCMP/RTHK/NHK/朝日/韩联社/TheHindu/TOI/TASS/RT（全部先实测后入册）
 - 覆盖: 大陆✓ 台湾✓ 香港✓ 日本✓ 韩国✓ 印度✓ 俄罗斯✓
+
+## 2026-09-09 Source Intelligence Pipeline（规则实现, AI OFF 全功能）
+- schema: sources +source_type/tier/quality_score/verification_status; +candidate_sources/event_evidence/story_fact_history; stories +fact_status/independent_source_count
+- 证据: 转载识别（标题归一化跨域→仅最早为 original）+ Tier C 不计独立事实源; 事实状态 7 态+历史不覆盖
+- 发现: 48 候选探测→28 pending/20 rejected; 审计可再生 (check-sources/evidence-report/acceptance-check)
+- 验收: 7/7 PASS
