@@ -78,7 +78,7 @@ def cmd_run(a):
         try:
             from . import ai as ai_mod
             out["ai_importance"] = ai_mod.enqueue(con)
-            out["ai_worker"] = ai_mod.worker(con, max_items=3)
+            out["ai_worker"] = ai_mod.worker(con)
         except Exception as _e:
             out["ai_worker"] = {"error": str(_e)[:120]}
         out["trending"] = trending_mod.run(con)

@@ -27,6 +27,9 @@ def ensure(con):
         id INTEGER PRIMARY KEY, story_id INTEGER, article_id INTEGER, domain TEXT,
         source_type TEXT, tier TEXT, is_original INTEGER, at TEXT,
         UNIQUE(story_id, article_id))""")
+    for col, ddl in (("expires_at", "TEXT"), ("last_attempt_at", "TEXT"), ("last_latency_s", "REAL")):
+        if not _has_col(con, "ai_queue", col):
+            con.execute(f"ALTER TABLE ai_queue ADD COLUMN {col} {ddl}")
     con.execute("""CREATE TABLE IF NOT EXISTS ai_queue(
         id INTEGER PRIMARY KEY, story_id INTEGER, task_type TEXT, priority INTEGER, status TEXT DEFAULT 'pending',
         attempts INTEGER DEFAULT 0, last_error TEXT, created_at TEXT, processed_at TEXT)""")
