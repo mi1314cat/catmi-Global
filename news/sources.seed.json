@@ -1,0 +1,490 @@
+[
+ {
+  "slug": "gnews-world",
+  "name": "Google News World",
+  "kind": "gnews",
+  "feed_url": "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
+  "category": "general",
+  "language": "en",
+  "priority": 1.5,
+  "poll_seconds": 600
+ },
+ {
+  "slug": "gnews-reuters",
+  "name": "Google News site:reuters.com",
+  "kind": "gnews",
+  "feed_url": "https://news.google.com/rss/search?q=site%3Areuters.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.5,
+  "poll_seconds": 900
+ },
+ {
+  "slug": "gnews-zh",
+  "name": "Google News 中文",
+  "kind": "gnews",
+  "feed_url": "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
+  "category": "general",
+  "language": "zh",
+  "priority": 1.3,
+  "poll_seconds": 900
+ },
+ {
+  "slug": "gnews-business",
+  "name": "Google News Business",
+  "kind": "gnews",
+  "feed_url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.2,
+  "poll_seconds": 900
+ },
+ {
+  "slug": "bbc-world",
+  "name": "BBC World",
+  "kind": "rss",
+  "feed_url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+  "category": "general",
+  "language": "en",
+  "priority": 1.5,
+  "poll_seconds": 600
+ },
+ {
+  "slug": "bbc-business",
+  "name": "BBC Business",
+  "kind": "rss",
+  "feed_url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "bbc-technology",
+  "name": "BBC Technology",
+  "kind": "rss",
+  "feed_url": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "guardian-world",
+  "name": "The Guardian World",
+  "kind": "rss",
+  "feed_url": "https://www.theguardian.com/world/rss",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.5
+ },
+ {
+  "slug": "guardian-tech",
+  "name": "The Guardian Tech",
+  "kind": "rss",
+  "feed_url": "https://www.theguardian.com/uk/technology/rss",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "guardian-news-sitemap",
+  "name": "Guardian News Sitemap",
+  "kind": "sitemap",
+  "feed_url": "https://www.theguardian.com/sitemaps/news.xml",
+  "category": "general",
+  "language": "en",
+  "priority": 1.2,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "aljazeera-all",
+  "name": "Al Jazeera",
+  "kind": "rss",
+  "feed_url": "https://www.aljazeera.com/xml/rss/all.xml",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.5,
+  "poll_seconds": 900
+ },
+ {
+  "slug": "dw-en",
+  "name": "DW English",
+  "kind": "rss",
+  "feed_url": "https://rss.dw.com/rdf/rss-en-all",
+  "category": "general",
+  "language": "en",
+  "priority": 1.2
+ },
+ {
+  "slug": "dw-zh",
+  "name": "DW 中文",
+  "kind": "rss",
+  "feed_url": "https://rss.dw.com/xml/rss-chi-all",
+  "category": "general",
+  "language": "zh",
+  "priority": 0.9,
+  "poll_seconds": 14400
+ },
+ {
+  "slug": "nyt-world",
+  "name": "NYT World",
+  "kind": "rss",
+  "feed_url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.2
+ },
+ {
+  "slug": "nyt-news-sitemap",
+  "name": "NYT News Sitemap",
+  "kind": "sitemap",
+  "feed_url": "https://www.nytimes.com/sitemaps/new/news.xml.gz",
+  "category": "general",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "bbc-news-sitemap",
+  "name": "BBC News Sitemap",
+  "kind": "sitemap",
+  "feed_url": "https://www.bbc.com/sitemaps/https-index-com-news.xml",
+  "category": "general",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "cnbc-topnews",
+  "name": "CNBC Top News",
+  "kind": "rss",
+  "feed_url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.3
+ },
+ {
+  "slug": "cnbc-world",
+  "name": "CNBC World Markets",
+  "kind": "rss",
+  "feed_url": "https://www.cnbc.com/id/100727362/device/rss/rss.html",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "cnbc-economy",
+  "name": "CNBC Economy",
+  "kind": "rss",
+  "feed_url": "https://www.cnbc.com/id/10001147/device/rss/rss.html",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "cnbc-business",
+  "name": "CNBC Business",
+  "kind": "rss",
+  "feed_url": "https://www.cnbc.com/id/20910258/device/rss/rss.html",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "marketwatch-top",
+  "name": "MarketWatch Top",
+  "kind": "rss",
+  "feed_url": "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.2
+ },
+ {
+  "slug": "yahoo-finance",
+  "name": "Yahoo Finance",
+  "kind": "rss",
+  "feed_url": "https://finance.yahoo.com/news/rssindex",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "oilprice",
+  "name": "OilPrice",
+  "kind": "rss",
+  "feed_url": "https://oilprice.com/rss/main",
+  "category": "finance",
+  "language": "en",
+  "priority": 0.9,
+  "poll_seconds": 7200
+ },
+ {
+  "slug": "fed-press",
+  "name": "Federal Reserve Press",
+  "kind": "rss",
+  "feed_url": "https://www.federalreserve.gov/feeds/press_all.xml",
+  "category": "finance",
+  "language": "en",
+  "priority": 0.9,
+  "poll_seconds": 14400
+ },
+ {
+  "slug": "ecb-press",
+  "name": "ECB Press",
+  "kind": "rss",
+  "feed_url": "https://www.ecb.europa.eu/rss/press.html",
+  "category": "finance",
+  "language": "en",
+  "priority": 0.8,
+  "poll_seconds": 14400
+ },
+ {
+  "slug": "hn-algolia-front",
+  "name": "Hacker News FP (Algolia)",
+  "kind": "api",
+  "adapter": "hn_algolia",
+  "feed_url": "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.3,
+  "poll_seconds": 900
+ },
+ {
+  "slug": "hn-algolia-newest",
+  "name": "Hacker News Newest (Algolia)",
+  "kind": "api",
+  "adapter": "hn_algolia",
+  "feed_url": "https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "ars-technica",
+  "name": "Ars Technica",
+  "kind": "rss",
+  "feed_url": "https://feeds.arstechnica.com/arstechnica/index",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.2,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "theverge",
+  "name": "The Verge",
+  "kind": "rss",
+  "feed_url": "https://www.theverge.com/rss/index.xml",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "techcrunch",
+  "name": "TechCrunch",
+  "kind": "rss",
+  "feed_url": "https://techcrunch.com/feed/",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "wired",
+  "name": "Wired",
+  "kind": "rss",
+  "feed_url": "https://www.wired.com/feed/rss",
+  "category": "tech",
+  "language": "en",
+  "priority": 0.9,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "engadget",
+  "name": "Engadget",
+  "kind": "rss",
+  "feed_url": "https://www.engadget.com/rss.xml",
+  "category": "tech",
+  "language": "en",
+  "priority": 0.9,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "thehackernews",
+  "name": "The Hacker News",
+  "kind": "rss",
+  "feed_url": "https://feeds.feedburner.com/TheHackersNews",
+  "category": "tech",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "krebs",
+  "name": "KrebsOnSecurity",
+  "kind": "rss",
+  "feed_url": "https://krebsonsecurity.com/feed/",
+  "category": "tech",
+  "language": "en",
+  "priority": 0.9,
+  "poll_seconds": 7200
+ },
+ {
+  "slug": "arxiv-cs-ai",
+  "name": "arXiv cs.AI+cs.LG",
+  "kind": "rss",
+  "feed_url": "http://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.LG&sortBy=submittedDate&sortOrder=descending&max_results=30",
+  "category": "tech",
+  "language": "en",
+  "priority": 0.8,
+  "poll_seconds": 21600
+ },
+ {
+  "slug": "github-blog",
+  "name": "GitHub Blog",
+  "kind": "rss",
+  "feed_url": "https://github.blog/feed/",
+  "category": "tech",
+  "language": "en",
+  "priority": 0.8,
+  "poll_seconds": 14400
+ },
+ {
+  "slug": "timesofisrael",
+  "name": "Times of Israel",
+  "kind": "rss",
+  "feed_url": "https://www.timesofisrael.com/feed/",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "scmp-world",
+  "name": "SCMP News",
+  "kind": "rss",
+  "feed_url": "https://www.scmp.com/rss/4/feed",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "un-news",
+  "name": "UN News",
+  "kind": "rss",
+  "feed_url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "reliefweb",
+  "name": "ReliefWeb",
+  "kind": "rss",
+  "feed_url": "https://reliefweb.int/updates/rss.xml",
+  "category": "society",
+  "language": "en",
+  "priority": 1.2,
+  "poll_seconds": 1800
+ },
+ {
+  "slug": "reddit-worldnews",
+  "name": "Reddit r/worldnews",
+  "kind": "rss",
+  "feed_url": "https://www.reddit.com/r/worldnews/.rss",
+  "category": "geopolitics",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "france24-en",
+  "name": "France24 EN",
+  "kind": "rss",
+  "feed_url": "https://www.france24.com/en/rss",
+  "category": "general",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "euronews",
+  "name": "Euronews",
+  "kind": "rss",
+  "feed_url": "https://www.euronews.com/rss",
+  "category": "general",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 3600
+ },
+ {
+  "slug": "le-monde",
+  "name": "Le Monde",
+  "kind": "rss",
+  "feed_url": "https://www.lemonde.fr/rss/une.xml",
+  "category": "general",
+  "language": "fr",
+  "priority": 0.9,
+  "poll_seconds": 7200
+ },
+ {
+  "slug": "yt-bbc-news",
+  "name": "YouTube BBC News",
+  "kind": "rss",
+  "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC16niRr50-MSBwiO3YDb3RA",
+  "category": "video",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 21600
+ },
+ {
+  "slug": "yt-aljazeera",
+  "name": "YouTube Al Jazeera",
+  "kind": "rss",
+  "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNye-wNBqNL5ZzHSJj3l8Bg",
+  "category": "video",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 21600
+ },
+ {
+  "slug": "yt-dw-news",
+  "name": "YouTube DW News",
+  "kind": "rss",
+  "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCknLrEdhRCp1aegoMqRaCZg",
+  "category": "video",
+  "language": "en",
+  "priority": 1.0,
+  "poll_seconds": 21600
+ },
+ {
+  "slug": "bilibili-popular",
+  "name": "B站 热门",
+  "kind": "api",
+  "adapter": "bilibili_popular",
+  "feed_url": "https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1",
+  "category": "video",
+  "language": "zh",
+  "priority": 0.9,
+  "poll_seconds": 7200
+ },
+ {
+  "slug": "vimeo-staffpicks",
+  "name": "Vimeo Staff Picks",
+  "kind": "rss",
+  "feed_url": "https://vimeo.com/channels/staffpicks/videos/rss",
+  "category": "video",
+  "language": "en",
+  "priority": 0.6,
+  "poll_seconds": 21600
+ }
+]
