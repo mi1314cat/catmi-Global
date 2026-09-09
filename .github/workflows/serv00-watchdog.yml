@@ -62,7 +62,7 @@ jobs:
           {
             echo "### catmi-Global Serve00 Watchdog"
             echo '```'
-            grep -E '^(WATCHDOG_TIME|PROJECT|CRON_STATUS|CRON_RESTORED|COLLECTOR_STATUS|LOCK_STATUS|ACTION|RESULT)=' \
+            grep -E '^(WATCHDOG_TIME|PROJECT|CRON_STATUS|CRON_RESTORED|COLLECTOR_STATUS|AI_QUEUE_PENDING|AI_LAST_RUN|AI_ENHANCED|LOCK_STATUS|ACTION|RESULT)=' \
               "$HOME/watchdog-output.log" 2>/dev/null || echo "(no output captured)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

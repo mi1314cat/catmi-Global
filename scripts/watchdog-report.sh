@@ -84,6 +84,24 @@ ST=$(cat "$PROJ/news-data/state/.wd-collector.txt" 2>/dev/null || echo UNKNOWN)
 rm -f "$PROJ/news-data/state/.wd-collector.txt"
 echo "COLLECTOR_STATUS=$ST"
 
+# 3b) AI 队列健康（只检查不动队列）
+"$PROJ/venv/bin/python" - <<'PYEOF' >"$PROJ/news-data/state/.wd-ai.txt" 2>/dev/null
+import os, sys
+sys.path.insert(0, os.path.expanduser("~/news-project"))
+from news import db as dbm
+con = dbm.connect()
+try:
+    q = {r[0]: r[1] for r in con.execute("SELECT status, COUNT(*) FROM ai_queue GROUP BY 1")}
+    lr = con.execute("SELECT value FROM meta WHERE key='ai_last_run'").fetchone()
+    print(f"AI_QUEUE_PENDING={q.get('pending', 0)}")
+    print(f"AI_LAST_RUN={lr[0] if lr else 'never'}")
+    print(f"AI_ENHANCED={con.execute('SELECT COUNT(*) FROM stories WHERE ai_enhanced=1').fetchone()[0]}")
+except Exception:
+    print("AI_QUEUE_PENDING=?")
+con.close()
+PYEOF
+grep -E "^AI_" "$PROJ/news-data/state/.wd-ai.txt" 2>/dev/null; rm -f "$PROJ/news-data/state/.wd-ai.txt"
+
 # 4) Lock 状态 — lockf 锁随进程死亡自动释放, 机制上不存在 stale lock;
 #    /tmp/news-run.lock 文件本身在无进程时是惰性空文件, 永不删除（避免与运行中采集竞态）
 if [ "$ST" = "RUNNING" ]; then
