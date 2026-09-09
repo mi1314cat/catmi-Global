@@ -11,7 +11,7 @@ LOGD="\$HOME/news-project/news-data/logs"
 
 BLOCK="$B
 */10 * * * * $SCRIPT_DIR/run-collector.sh >> $LOGD/cron.log 2>&1
-*/5 * * * * /bin/sh -c "cd \$HOME/news-project && ./venv/bin/python -c 'from news import db as dbm; from news import ai; con=dbm.connect(); ai.enqueue(con); print(ai.worker(con))' >> \$HOME/news-project/news-data/logs/ai-worker.log 2>&1" >> $LOGD/cron.log 2>&1
+*/5 * * * * $SCRIPT_DIR/ai-worker.sh >> $LOGD/cron.log 2>&1
 35 * * * * /bin/sh -c \"cd \$HOME/news-project && ./venv/bin/python -m news.newsctl cleanup\" >> $LOGD/cron.log 2>&1
 10 4 * * * /bin/sh -c \"cd \$HOME/news-project && ./venv/bin/python -m news.newsctl backup\" >> $LOGD/cron.log 2>&1
 20 4 * * * /bin/sh -c \"cd \$HOME/news-project && ./venv/bin/python -m news.newsctl doctor\" >> $LOGD/cron.log 2>&1
