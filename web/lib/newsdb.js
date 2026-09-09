@@ -1,6 +1,8 @@
 // lib/newsdb.js — 只读访问 news.db（与 Python 管道共享, WAL 多读单写）
 // 零秘密: 本模块不含任何凭证; 只执行 SELECT。
 'use strict';
+
+const { toEvidence } = require('./evidence');
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const os = require('os');
@@ -291,10 +293,15 @@ function searchEvents({ q, min_importance, hours, limit, offset, ai_only }) {
 function getEventDetail(id) {
   const st = db().prepare(`SELECT * FROM stories WHERE id=? AND status='active'`).get(id);
   if (!st) return null;
-  st.articles = db().prepare(`SELECT a.id, a.title, a.url, a.published_at, a.discovered_at,
-    s.name AS source_name, s.slug, s.source_type, s.tier, s.country
+  st.articles = db().prepare(`SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url,
+    a.author, a.source_id, a.published_at, a.fetched_at, a.discovered_at, a.language,
+    a.summary_text, a.content, a.extract_method, a.dupe_of,
+    s.id AS s_id, s.name, s.slug, s.source_type, s.tier, s.quality_score, s.verification_status, s.country
     FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.story_id=?
-    ORDER BY COALESCE(a.published_at, a.discovered_at)`).all(id);
+    ORDER BY COALESCE(a.published_at, a.discovered_at)`).all(id).map((r) => ({
+    ...toEvidence(r, r),
+    source_name: r.source_name, slug: r.slug, country: r.country,   // 兼容旧字段
+  }));
   st.evidence_domains = db().prepare(`SELECT DISTINCT domain, tier, source_type, is_original
     FROM event_evidence WHERE story_id=? AND is_original=1`).all(id);
   st.official_source_count = db().prepare(`SELECT COUNT(DISTINCT e.domain) FROM event_evidence e
