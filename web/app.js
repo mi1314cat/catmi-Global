@@ -157,6 +157,36 @@ async function handleAdmin(req, res, url, sess) {
     auth.audit(sess.username, 'source-delete', 'id=' + m[1]);
     return ok({ ok: true, note: '来源已删除（已采集文章保留）' });
   }
+  if (p === '/ai/config') {
+    const wdb = adminWriteDb();
+    const g = (k) => { const r = wdb.prepare('SELECT value FROM meta WHERE key=?').get(k); return r ? r.value : null; };
+    const key = g('ai_freellm_key') || '';
+    const qs = (st) => wdb.prepare('SELECT COUNT(*) AS n FROM ai_queue WHERE status=?').get(st).n;
+    return ok({ url: g('ai_freellm_url') || '', key_masked: key ? '****' + key.slice(-4) : '', model: g('ai_freellm_model') || 'auto',
+      enabled: (g('ai_enabled') || '1') === '1',
+      queue: { pending: qs('pending'), done: qs('done'), failed: qs('failed'), deferred: qs('deferred'), expired: qs('expired') },
+      cache_entries: wdb.prepare('SELECT COUNT(*) AS n FROM ai_cache').get().n,
+      enhanced: wdb.prepare('SELECT COUNT(*) AS n FROM stories WHERE ai_enhanced=1').get().n,
+      last_run: g('ai_last_run'), last_done: g('ai_last_done'), last_failed: g('ai_last_failed') });
+  }
+  if (p === '/ai/config' && req.method === 'POST') {
+    const chunks = []; for await (const c of req) chunks.push(c);
+    let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
+    const wdb = adminWriteDb();
+    const set = (k, v) => wdb.prepare('INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
+    if (b.url) set('ai_freellm_url', b.url.replace(/\/+$/, ''));
+    if (b.key) set('ai_freellm_key', b.key);          // 空 = 保留现有
+    if (b.model) set('ai_freellm_model', b.model);
+    if (typeof b.enabled === 'boolean') set('ai_enabled', b.enabled ? '1' : '0');
+    auth.audit(sess.username, 'ai-config', 'updated');
+    return ok({ ok: true });
+  }
+  if (p === '/ai/test' && req.method === 'POST') {
+    try {
+      const r = await adminRunPython(['scripts/ai-test.py'], 120000);
+      return ok(typeof r === 'object' ? r : { raw: String(r).slice(0, 200) });
+    } catch (e) { return send(res, 500, { error: String(e.message).slice(0, 200) }); }
+  }
   if (p === '/logs') {
     return ok({ web: adminsvc.tailLog('web.log', 40), cron: adminsvc.tailLog('cron.log', 30), audit: auth.tailAudit(40) });
   }

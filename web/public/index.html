@@ -80,7 +80,7 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 const esc=s=>(s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ago=t=>{if(!t)return"—";const d=(Date.now()-new Date(t).getTime())/36e5;return isNaN(d)?"—":d<1?Math.round(d*60)+"分钟前":d<48?Math.round(d)+"小时前":Math.round(d/24)+"天前"};
 let USER=null, CSRF='', view='overview', cur={};
-const ADMIN_TABS=[["admin","概览"],["sys","系统状态"],["searchsvc","搜索服务"],["collector","情报采集"],["events","事件"],["sources","来源"],["media","媒体"],["mcp","MCP 服务"],["api","API"],["users","用户"],["storage","存储"],["logs","日志"],["diag","系统诊断"],["settings","设置"]];
+const ADMIN_TABS=[["admin","概览"],["sys","系统状态"],["searchsvc","搜索服务"],["collector","情报采集"],["events","事件"],["sources","来源"],["media","媒体"],["mcp","MCP 服务"],["api","API"],["users","用户"],["storage","存储"],["logs","日志"],["diag","系统诊断"],["ai","AI 服务"],["settings","设置"]];
 const PUB_TABS=[["overview","概览"],["search","搜索"],["events","事件"],["sources","来源"],["media","媒体"],["system","系统"]];
 async function j(u,o){const r=await fetch(u,o);if(!o||o.nothrow||r.ok)return r.json();throw new Error("HTTP "+r.status)}
 async function adminApi(u,opt){opt=opt||{};opt.headers=Object.assign({"X-GI-CSRF":CSRF,"Content-Type":"application/json"},opt.headers||{});
@@ -223,7 +223,7 @@ async function pageSystem(){
 /* ============ 管理后台 ============ */
 const MCPTOOLS=[["web_search","搜索互联网","q, time_range, language, region, category, limit, page"],["deep_search","多步研究（网络+读页+情报库关联，无 AI）","q, time_range, language, max_pages, budget_ms"],["read_url","读取网页（标题/作者/正文/图片，防 SSRF）","url, timeout_ms"],["search_intelligence","搜索本地情报库（文章+事件）","q, hours, category, limit"],["search_news","情报库文章检索","q, hours, sort, limit"],["search_events","事件簇检索","q, hours, limit"],["get_event","事件详情（全来源+时间线）","id"],["get_timeline","事件时间线","id"],["get_article","文章全文","id"],["search_media","媒体/视频热点","q, hours, limit"],["get_trending","当前热点榜","hours, limit"],["list_sources","来源清单（含 24h 产量/失败率）","—"]];
 function goAdmin(tab){view="admin";renderTabs();cur={};
-  const tabMap={admin:admOverview,sys:pageSystem,searchsvc:admSearch,collector:admCollector,events:pageEvents,sources:admSources,media:pageMedia,mcp:admMcp,api:admApi,users:admUsers,storage:admStorage,logs:admLogs,diag:admDiag,settings:admSettings};
+  const tabMap={admin:admOverview,sys:pageSystem,searchsvc:admSearch,collector:admCollector,events:pageEvents,sources:admSources,media:pageMedia,mcp:admMcp,api:admApi,users:admUsers,storage:admStorage,logs:admLogs,diag:admDiag,ai:admAi,settings:admSettings};
   $("#tabs").innerHTML=ADMIN_TABS.map(([v,l])=>`<button data-v="${v}" class="${v===tab?"on":""}" onclick="goAdmin('${v}')">${l}</button>`).join("");
   $("#main").innerHTML='<div class="empty">加载中……</div>';
   (tabMap[tab]||admOverview)().catch(e=>{$("#main").innerHTML=`<div class="empty">加载失败：${esc(e.message)}</div>`})}
@@ -281,10 +281,10 @@ async function admMcp(){
   const mcp=h.mcp||{};
   $("#main").innerHTML=`<div class="card"><div class="row"><b style="font-size:16px">MCP 服务</b><span class="tag ${mcp.enabled?"ok":"bad"}">${mcp.enabled?"在线":"未配置"}</span></div>
     <div class="meta"><span>协议：Streamable HTTP</span><span>认证：Bearer Token</span><span>工具：${mcp.tools||0} 个（只读）</span><span>限速：60 次/分钟/IP</span></div></div>
-    <div class="card"><div class="row"><span class="meta">Endpoint</span><button style="padding:3px 10px" onclick="copy('https://<你的域名>/mcp','MCP 地址')">复制 MCP 地址</button></div>
-    <div class="meta"><code>https://<你的域名>/mcp</code></div>
-    <div class="row" style="margin-top:8px"><span class="meta">Agent 配置</span><button style="padding:3px 10px" onclick="copy(JSON.stringify({mcpServers:{'global-intelligence':{url:'https://<你的域名>/mcp',headers:{Authorization:'Bearer <你的Token>'}}}},null,1),'Agent 配置')">复制配置</button></div>
-    <div class="meta"><code>{"mcpServers":{"global-intelligence":{"url":"https://<你的域名>/mcp","headers":{"Authorization":"Bearer &lt;你的Token&gt;"}}}}</code></div></div>
+    <div class="card"><div class="row"><span class="meta">Endpoint</span><button style="padding:3px 10px" onclick="copy('https://myp.micsdic.dpdns.org/mcp','MCP 地址')">复制 MCP 地址</button></div>
+    <div class="meta"><code>https://myp.micsdic.dpdns.org/mcp</code></div>
+    <div class="row" style="margin-top:8px"><span class="meta">Agent 配置</span><button style="padding:3px 10px" onclick="copy(JSON.stringify({mcpServers:{'global-intelligence':{url:'https://myp.micsdic.dpdns.org/mcp',headers:{Authorization:'Bearer <你的Token>'}}}},null,1),'Agent 配置')">复制配置</button></div>
+    <div class="meta"><code>{"mcpServers":{"global-intelligence":{"url":"https://myp.micsdic.dpdns.org/mcp","headers":{"Authorization":"Bearer &lt;你的Token&gt;"}}}}</code></div></div>
     <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class=pri onclick="tokCreate()">创建 Token</button><button onclick="mcpTest()">测试 MCP</button></div></div>
     <h2>Token 管理</h2><div class="card tw"><table><tr><th>名称</th><th>状态</th><th>创建时间</th><th>最后使用</th><th>调用次数</th><th>操作</th></tr>
     ${tk.results.length?tk.results.map(t=>`<tr><td><b>${esc(t.name)}</b><div class="meta">${esc(t.token_prefix)}…</div></td>
@@ -362,6 +362,33 @@ async function admDiag(){
     ${d.checks.map(c=>`<tr><td>${dot(c.ok)}<b>${esc(c.name)}</b></td><td>${c.ok?"✓":"✗"} <span class="meta">${esc(c.detail)}</span></td></tr>`).join("")}</table></div>
     <div class="card"><button onclick="copy(window.__diagreport||'','诊断报告')">复制诊断报告</button></div>`;
   window.__diagreport=d.report}
+async function admAi(){
+  const c=await adminApi("/api/admin/ai/config");
+  $("#main").innerHTML=`<div class="card"><div class="row"><b style="font-size:14px">FreeLLM AI 增强（Auto 模式）</b>
+    <span class="tag ${c.enabled?"ok":"bad"}">${c.enabled?"已启用":"已禁用"}</span></div>
+    <div class="meta">Key 只存服务器（env.local + 数据库），此处仅显示掩码，绝不进入 Git/前端源码/MCP/日志。</div>
+    <div class="row" style="margin-top:8px"><input id="ai-url" style="flex:1;min-width:240px" placeholder="API URL，如 https://…/v1" value="${esc(c.url)}">
+    <input id="ai-key" type="password" style="flex:1;min-width:180px" placeholder="API Key（留空 = 保留现有 ${esc(c.key_masked)}）">
+    <input id="ai-model" style="width:130px" placeholder="model" value="${esc(c.model)}">
+    <label style="white-space:nowrap"><input type="checkbox" id="ai-enabled" ${c.enabled?"checked":""}> 启用</label>
+    <button onclick="saveAi()">保存</button><button onclick="testAi()">测试连接</button></div>
+    <div id="ai-test" class="meta" style="margin-top:6px"></div></div>
+    <div class="card tw"><table><tr><th>AI Queue</th><th>值</th></tr>
+    <tr><td>Pending</td><td>${c.queue.pending}</td></tr><tr><td>Done</td><td>${c.queue.done}</td></tr>
+    <tr><td>Deferred(退避)</td><td>${c.queue.deferred}</td></tr><tr><td>Failed</td><td>${c.queue.failed}</td></tr>
+    <tr><td>Expired(过期淘汰)</td><td>${c.queue.expired}</td></tr>
+    <tr><td>Cache 条目</td><td>${c.cache_entries}</td></tr><tr><td>AI 增强事件</td><td>${c.enhanced}</td></tr>
+    <tr><td>最近一轮</td><td>${esc(c.last_run||"-")}（done ${c.last_done||0} / fail ${c.last_failed||0}）</td></tr></table></div>`}
+async function saveAi(){
+  const b={url:$("#ai-url").value.trim(),model:$("#ai-model").value.trim()||"auto",enabled:$("#ai-enabled").checked};
+  const k=$("#ai-key").value.trim(); if(k)b.key=k;
+  const r=await adminApi("/api/admin/ai/config",{method:"POST",body:JSON.stringify(b)});
+  toast(r.ok?"AI 配置已保存":"保存失败"); admAi()}
+async function testAi(){
+  $("#ai-test").textContent="测试中…（FreeLLM Auto 调用约 10-30s）";
+  try{const r=await adminApi("/api/admin/ai/test",{method:"POST",body:"{}"});
+    $("#ai-test").innerHTML=r.ok?`<span class="tag ok">连接正常</span> 实际模型: ${esc(r.model)} / ${r.latency}s`:`<span class="tag bad">失败</span> ${esc(r.error||r.raw||"")}`}
+  catch(e){$("#ai-test").innerHTML=`<span class="tag bad">失败</span> ${esc(String(e.message||e))}`}}
 async function admSettings(){
   const s=await adminApi("/api/admin/settings");
   $("#main").innerHTML=`<div class="card"><div class="row"><b style="font-size:14px">系统设置</b><span class="tag hot">只读展示</span></div>
