@@ -326,7 +326,10 @@ async function initMcp() {
         { q: z.string(), time_range: z.enum(['day','week','month','year']).optional(),
           language: z.string().optional(), region: z.string().optional(),
           category: z.enum(['general','news']).optional(), limit: z.number().optional(), page: z.number().optional() },
-        async (a) => websearch.webSearch(a.q, a));
+        async (a) => {
+        try { a.source_quality = (dom) => { const m = newsdb.sourceQualityByDomains([dom]); return m[dom] || null; }; } catch { /* */ }
+        return websearch.webSearch(a.q, a);
+      });
       tool('read_url', 'Read one web page and extract title/author/published/content/images. Uses the pipeline extraction stack (trafilatura->Scrapling). Never bypasses access controls; returns status ok|inaccessible|needs_js|failed.',
         { url: z.string(), timeout_ms: z.number().optional() },
         async (a) => reader.readUrl(a.url, Math.min(a.timeout_ms || 25000, 45000)));

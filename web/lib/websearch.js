@@ -60,7 +60,7 @@ function normalizeUrl(u) {
 }
 const STOP = new Set(('the a an and or of to in on for with at by from as is are was were be been it its this that ' +
   'these those after before over under new says say said will would could news latest').split(' '));
-function tokens(t) { return new Set((t.toLowerCase().match(/[a-z]{3,}/g) || []).filter((w) => !STOP.has(w))); }
+function tokens(t) { return new Set((((t || '').toLowerCase().match(/[a-z]{3,}/g) || []).filter((w) => !STOP.has(w))).concat((t || '').match(/[\u4e00-\u9fff]|\u3040-\u30ff/g) || [])); }  // 拉丁词 + CJK 单字
 
 // P0-2: 统一 SearchResult —— 所有后端出口必须经此归一化
 function normResult(x, backend, rank, language) {
@@ -238,6 +238,79 @@ async function wikipedia(q, opts) {
   }, 'wikipedia', i, opts.language)).filter((x) => x.url);
 }
 
+// ---------- P0-3: 规则重排 ----------
+const OFFICIAL_TLD = /\.(gov|edu|mil|int)(\.[a-z]{2,3})?$/i;
+const OFFICIAL_PATH = /\/(docs?|api|pricing|changelog|releases?|press|policy)(\/|$)/i;
+
+function relevanceScore(qTokens, item) {
+  if (!qTokens.size) return 0;
+  const doc = tokens((item.title || '') + ' ' + (item.snippet || ''));
+  let hit = 0; for (const w of qTokens) if (doc.has(w)) hit++;
+  return hit / qTokens.size;               // query 词覆盖率
+}
+
+function freshnessScore(publishedAt, halfLifeH) {
+  if (!publishedAt) return 0;
+  const dt = (Date.now() - Date.parse(publishedAt)) / 3600000;
+  if (!isFinite(dt) || dt < 0 || dt > 24 * 365 * 3) return 0;  // 超过3年=0, 未来时间=0
+  return Math.exp(-dt / halfLifeH);
+}
+
+function officialScore(item, q) {
+  const host = (item.source || '').toLowerCase();
+  const url = item.url || item.canonical_url || '';
+  let v = 0;
+  if (OFFICIAL_TLD.test(host)) v = 1;                       // .gov/.edu/.mil/.int
+  else if (OFFICIAL_PATH.test(url)) v = 0.8;                // /docs /api /pricing /changelog
+  else if (/^(www\.)?(reuters|apnews|afp|bbc|aljazeera)\./.test(host)) v = 0.5; // 通讯社
+  const sq = (q || '').toLowerCase();
+  if ((sq.includes('official') || sq.includes('官方') || sq.includes('pricing') || sq.includes('官网')) && url && !/news|blog|forum|reddit/.test(url)) v = Math.max(v, 0.7);
+  return v;
+}
+
+function seoFarmPenalty(item, rel) {
+  // 保守: 仅当 无摘要 + 相关性极低 + 无发布时间 才轻降权 (模板垃圾特征), 不猜新域名
+  if (!item.snippet && rel < 0.15 && !item.published_at) return 0.35;
+  return 0;
+}
+
+// resolver: domain -> {quality_score, tier, source_type} | null (调用方注入, websearch 保持无 DB 依赖)
+function rerank(items, query, opts) {
+  const qTokens = tokens(query || '');
+  const halfLifeH = { day: 24, week: 72, month: 240, year: 720 }[opts.time_range] || 72;
+  const res = opts.source_quality || (() => null);
+  for (const it of items) {
+    const rel = relevanceScore(qTokens, it);
+    const fr = freshnessScore(it.published_at, halfLifeH);
+    const dom = (it.publisher_domain || it.source || '').replace(/^www\./, '');
+    const sq = res(dom) || res(it.source || '') || null;
+    const q01 = sq && sq.quality_score != null ? Math.max(0, Math.min(100, sq.quality_score)) / 100 : 0.4; // 未知域=0.4 中性
+    const off = officialScore(it, query);
+    const penalty = seoFarmPenalty(it, rel);
+    const final = 0.45 * rel + 0.25 * fr + 0.2 * q01 + 0.1 * off - penalty;
+    it.relevance_score = +rel.toFixed(3);
+    it.freshness_score = +fr.toFixed(3);
+    it.source_quality_score = sq ? sq.quality_score : null;
+    it.source_tier = sq ? sq.tier : null;
+    it.source_type = sq ? sq.source_type : it.source_type || null;
+    it.source_id = sq ? sq.source_id : null;                 // P0-2 留空的 source_id 在此回填
+    it.official_score = +off.toFixed(2);
+    it.final_score = +final.toFixed(3);
+    it.score_breakdown = { relevance: it.relevance_score, freshness: it.freshness_score, quality: +q01.toFixed(2), official: it.official_score, penalty };
+  }
+  items.sort((a, b) => b.final_score - a.final_score);
+  // Diversity: 同域≤2 (publisher_domain/source), 超出移入 filtered 保留
+  const cap = Math.max(1, +opts.domain_cap || 2);
+  const cnt = {}; const main = []; const filtered = [];
+  for (const it of items) {
+    const d = (it.publisher_domain || it.source || 'unknown').replace(/^www\./, '');
+    cnt[d] = (cnt[d] || 0) + 1;
+    (cnt[d] <= cap ? main : filtered).push(it);
+    if (cnt[d] > cap) it.filtered_reason = `domain_cap:${d}`;
+  }
+  return { main, filtered };
+}
+
 // ---------- 统一入口 ----------
 const PROVIDERS = {
   searxng: { fn: searxng, priority: 1, note: 'PRIMARY（配置 SEARXNG_URL 后启用）' },
@@ -272,12 +345,17 @@ async function webSearch(query, opts = {}) {
       providers.push({ provider: name, status: 'error', error: err, latency_ms });
     }
   });
-  items = dedup(items).slice(0, limit);
+  items = dedup(items);
+  const unranked = items.slice();                          // 旧顺序(诊断对比用)
+  const { main, filtered } = rerank(items, query, opts);
+  items = main.slice(0, limit);
   return {
     query, scope: 'web', limit, page,
     elapsed_ms: Date.now() - t0,
     providers,
     results: items,
+    filtered: filtered.slice(0, 8),            // 被多样性截断的结果(带 filtered_reason) 保留 debug
+    unranked_first3: unranked.slice(0, 3).map((x) => x.source + '|' + (x.title || '').slice(0, 40)),  // 旧顺序对照
   };
 }
 

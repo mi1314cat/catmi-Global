@@ -311,6 +311,20 @@ function getEventDetail(id) {
   return st;
 }
 
-module.exports = { db, diskStatus, searchArticles, latestArticles, getArticle, searchStories, getStory,
+function sourceQualityByDomains(domains) {
+  // P0-3: domain -> sources 表质量 (一次查询, 不建第二份质量表)
+  const out = {};
+  for (const d0 of domains) {
+    if (!d0) continue;
+    const d = String(d0).toLowerCase().replace(/^www\./, '');
+    for (const suffix of [d, '%' + d]) {
+      const rows = db().prepare(`SELECT id, name, source_type, tier, quality_score, site_url, feed_url FROM sources
+        WHERE disabled=0 AND (site_url LIKE ? OR feed_url LIKE ?) LIMIT 1`).all(d + '%', '%' + d + '%');
+      if (rows.length) { const r = rows[0]; out[d0] = { source_id: r.id, name: r.name, source_type: r.source_type, tier: r.tier, quality_score: r.quality_score }; break; }
+    }
+  }
+  return out;
+}
+module.exports = { sourceQualityByDomains, db, diskStatus, searchArticles, latestArticles, getArticle, searchStories, getStory,
   searchEvents, getEventDetail,
                    trending, listSources, categories, getImageMeta, health, isoAgo };
