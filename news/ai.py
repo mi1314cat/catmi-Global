@@ -47,7 +47,7 @@ def _rules(con, sid, t_imp=None):
     lvl = "LOW" if score <= 0 else "NORMAL" if score == 1 else "NOTABLE" if score == 2 else "HIGH" if score <= 4 else "CRITICAL"
     # 事件速度: 30 分钟内新增独立来源
     vel = con.execute("SELECT COUNT(DISTINCT domain) FROM event_evidence WHERE story_id=? AND at >= ?",
-                      (sid, dbm.iso_ago(hours=-0.5))).fetchone()[0]
+                      (sid, dbm.iso_ago(hours=0.5))).fetchone()[0]
     if vel >= 10: lvl = "CRITICAL"
     elif vel >= 5 and lvl in ("LOW", "NORMAL", "NOTABLE"): lvl = "HIGH"
     elif vel >= 3 and lvl in ("LOW", "NORMAL"): lvl = "NOTABLE"
@@ -127,7 +127,7 @@ def _process_one(con, it):
     ih = hashlib.sha256(prompt.encode()).hexdigest()
     c = cfg(con)
     row = con.execute("SELECT response FROM ai_cache WHERE input_hash=? AND task_type=? AND prompt_version=? AND model=?",
-                      (ih, task, PROMPT_VERSION, c["model"])).fetchone()
+                      (ih, task, PROMPT_VERSION, "auto")).fetchone()
     if row:
         content, model_used, lat, hit = row["response"], c["model"], 0.0, True
     else:
@@ -147,7 +147,7 @@ def _process_one(con, it):
                  story_id))
     if not hit:
         con.execute("""INSERT OR IGNORE INTO ai_cache(input_hash, task_type, prompt_version, model, response, created_at)
-                       VALUES(?,?,?,?,?,?)""", (ih, task, PROMPT_VERSION, model_used, content, dbm.utcnow()))
+                       VALUES(?,?,?,?,?,?)""", (ih, task, PROMPT_VERSION, "auto", content, dbm.utcnow()))
     con.execute("UPDATE ai_queue SET status='done', processed_at=?, last_latency_s=? WHERE id=?", (dbm.utcnow(), lat, it["id"]))
     return lat, hit
 
@@ -165,7 +165,13 @@ def _fail(con, it, e):
     con.commit()
 
 def worker(con, max_items=None):
-    """单进程 + 有限并发 + 动态批量 + 每批重新抢占"""
+    """单进程 + 有限并发 + 动态批量 + 每批重新抢占; 单实例锁防 cron/手动重叠"""
+    import fcntl
+    lk = open("/tmp/ai-worker.lock", "w")
+    try:
+        fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return {"skipped": "another_worker_running"}
     c = cfg(con)
     if not c["enabled"] or not c["url"]:
         return {"skipped": "ai_disabled_or_unconfigured"}
