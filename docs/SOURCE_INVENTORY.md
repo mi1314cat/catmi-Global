@@ -66,3 +66,26 @@
 
 优先级: 日本 NHK web rss > 韩国 Yonhap > 东南亚 CNA > 印度 The Hindu > 俄 Interfax-Ukraine/TASS > 阿 Al Jazeera Arabic > 西 El País > 德 DW-de（端点已实测 200, 直接加）> 澳 ABC > 拉美 Mercopress > 非洲 AllAfrica。
 预计 +11 源后语言分布: en 78%, zh 5%, fr 2%, ja/ko/ru/ar/es/de 13% —— 偏科显著改善。
+
+---
+
+# 2026-09-09 地域扩容（+12 源 → 64 源）
+
+用户优先级: 中国大陆/台湾/香港 > 日韩 > 印俄。全部经服务器实测（HTTP 200 + 真实条目）后入册:
+
+| 源 | slug | 语言/地区 | 探测结果 |
+|---|---|---|---|
+| 中国新闻网 | cn-chinanews | zh/CN | 30 条 ✓ |
+| GNews 中国大陆 | cn-gnews-china | zh/CN | ✓（gnews 适配器） |
+| GNews 台湾 | tw-gnews | zh-Hant/TW | ✓ |
+| 南华早报 SCMP | hk-scmp | zh/HK | 50 条 ✓（跟随跳转） |
+| 香港电台 RTHK | hk-rthk | zh/HK | 19 条 ✓ |
+| NHK | jp-nhk | ja/JP | 7 条 ✓ |
+| 朝日新聞 | jp-asahi | ja/JP | 41 条 ✓ |
+| 韩联社(英文) | kr-yonhap | ko/KR | 102 条 ✓ |
+| The Hindu | in-thehindu | en/IN | ✓ |
+| Times of India | in-toi | en/IN | ✓ |
+| 塔斯社 TASS | ru-tass | en/RU | 100 条 ✓ |
+| RT | ru-rt | en/RU | 100 条 ✓ |
+
+探测失败淘汰: ChinaDaily(404)、RT中文(401)、自由时报/中央社(404, URL 已失效)、YahooJP(403 bot)、Yonhap韩文(404)、Kommersant(RU 602 条, 暂缓可后补)。

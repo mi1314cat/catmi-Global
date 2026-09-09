@@ -71,3 +71,7 @@ admin / <管理员密码已重置，请勿发布>（已一次性交付; 建议�
 - scripts/: run-collector.sh（one-shot 入口+状态文件）/ install-cron.sh（幂等 Marker 区块管理+旧条目精确迁移）/ check-cron.sh（机器可读）/ remove-cron.sh / watchdog-report.sh
 - .github/workflows/serv00-watchdog.yml（UTC 20:25=北京 04:25; contents:read 最小权限; Host Key 固定于 .github/known_hosts.serv00）
 - 测试 9 项全过（缺失恢复/幂等×3/保护其他 Cron/失败不重建/运行中锁保护/SSH 失败不触碰/YAML/Shell/Secret 扫描）
+
+## 2026-09-09 地域扩容 +12 源（52→64）
+- 新增: 中新网/GNews大陆/台湾GNews/SCMP/RTHK/NHK/朝日/韩联社/TheHindu/TOI/TASS/RT（全部先实测后入册）
+- 覆盖: 大陆✓ 台湾✓ 香港✓ 日本✓ 韩国✓ 印度✓ 俄罗斯✓
