@@ -19,3 +19,11 @@
 - 站点类型保持 nodejs（Passenger）——**改回 PHP 会危及 SSL 绑定，禁止**
 - Cloudflare 侧配置不在本机管理范围（<free-ddns-provider> + CF 代理），如需强制 HTTPS 跳转请在 CF 面板配置
 - RSS 测试备忘: feeds.bbci.co.uk 旧端点 404，第二阶段需重选有效源（如 Reuters/Al Jazeera/GitHub 上的 RSSHub 实例等）
+
+---
+
+# Watchdog 增补（2026-09-09）
+
+- Cron 已迁移至 Marker 区块管理（`# CATMI_GLOBAL_COLLECTOR_BEGIN/END`），采集入口统一为 `scripts/run-collector.sh`（lockf 防重叠 + 状态文件 `news-data/state/collector-state.json`）
+- 外部 Watchdog: `.github/workflows/serv00-watchdog.yml`，每天北京时间 04:25 检查，Cron 缺失/重复/损坏时幂等修复；详细机制见 `docs/SERVE00_WATCHDOG.md`
+- Serve00 Cron 是主调度器；Watchdog 非常驻、非调度器，仅 SSH 检查 + 最小修复

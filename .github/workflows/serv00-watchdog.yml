@@ -1,0 +1,68 @@
+name: serv00-watchdog
+
+# 外部 Watchdog: 每天 北京时间 04:25（= UTC 20:25）检查一次 Serve00 上的
+# Cron / Collector / Lock, 必要时幂等恢复 Cron。Serve00 自身 Cron 是主调度器,
+# 本 Workflow 只做检查与最小修复, 不是采集调度器。
+on:
+  schedule:
+    - cron: "25 20 * * *"   # UTC 20:25 = 北京时间 04:25
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: serv00-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH (key via redirect, never echoed)
+        env:
+          SERV00_SSH_PRIVATE_KEY: ${{ secrets.SERV00_SSH_PRIVATE_KEY }}
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SERV00_SSH_PRIVATE_KEY" > "$HOME/.ssh/serv00_watchdog_key"
+          chmod 600 "$HOME/.ssh/serv00_watchdog_key"
+          # Host Key 固定在仓库文件中（公开信息, 非 Secret）—— 绝不绕过主机验证
+          cp .github/known_hosts.serv00 "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Run watchdog (check + minimal repair on Serve00)
+        env:
+          SERV00_HOST: ${{ secrets.SERV00_HOST }}
+          SERV00_PORT: ${{ secrets.SERV00_PORT }}
+          SERV00_USER: ${{ secrets.SERV00_USER }}
+        run: |
+          set -eu
+          # 不使用 set -x; 输出仅含 watchdog 机器可读报告（无 Secret）
+          ssh -i "$HOME/.ssh/serv00_watchdog_key" \
+              -p "$SERV00_PORT" \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              -o StrictHostKeyChecking=yes \
+              -o BatchMode=yes \
+              -o ConnectTimeout=20 \
+              "$SERV00_USER@$SERV00_HOST" \
+              'sh "$HOME/news-project/scripts/watchdog-report.sh"' \
+              | tee "$HOME/watchdog-output.log"
+          RC=${PIPESTATUS[0]}
+          echo "watchdog exit code: $RC"
+          exit "$RC"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### catmi-Global Serve00 Watchdog"
+            echo '```'
+            grep -E '^(WATCHDOG_TIME|PROJECT|CRON_STATUS|CRON_RESTORED|COLLECTOR_STATUS|LOCK_STATUS|ACTION|RESULT)=' \
+              "$HOME/watchdog-output.log" 2>/dev/null || echo "(no output captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
