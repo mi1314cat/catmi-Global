@@ -263,5 +263,47 @@ function diskStatus() {
   return out;
 }
 
+
+function searchEvents({ q, min_importance, hours, limit, offset, ai_only }) {
+  limit = Math.min(+limit || 20, 50); offset = Math.max(+offset || 0, 0);
+  const where = ["st.status='active'"]; const params = [];
+  const fts = ftsQuery(q, 'or');
+  if (fts) { where.push('stories_fts MATCH ?'); params.push(fts); }
+  if (hours) { where.push('st.last_updated >= ?'); params.push(isoAgo(+hours)); }
+  if (min_importance === 'CRITICAL') where.push("st.importance='major'");
+  else if (min_importance === 'HIGH') where.push("st.importance IN ('high','major')");
+  else if (min_importance === 'NOTABLE') where.push("st.importance IN ('normal','high','major')");
+  if (ai_only) where.push('st.ai_enhanced = 1');
+  let join = fts ? 'JOIN stories_fts ON stories_fts.rowid = st.id' : '';
+  const wsql = ' WHERE ' + where.join(' AND ');
+  const total = db().prepare(`SELECT COUNT(*) AS n FROM stories st ${join}${wsql}`).get(...params).n;
+  const rows = db().prepare(`SELECT st.id, st.title, st.importance, st.category, st.fact_status,
+    st.independent_source_count, st.heat, st.ai_enhanced, st.ai_model, st.ai_at,
+    substr(st.ai_summary, 1, 400) AS ai_summary, st.first_seen, st.last_updated
+    FROM stories st ${join}${wsql} ORDER BY st.heat DESC, st.last_updated DESC LIMIT ? OFFSET ?`
+  ).all(...params, limit, offset);
+  const ev = db().prepare(`SELECT COUNT(DISTINCT e.domain) AS n FROM event_evidence e
+    WHERE e.story_id=? AND e.tier IN ('A','B') AND e.is_original=1`);
+  const cnt = db().prepare(`SELECT COUNT(*) AS n FROM articles WHERE story_id=?`);
+  for (const r of rows) { r.source_count = cnt.get(r.id).n; r.independent_fact_sources = ev.get(r.id).n; }
+  return { total, limit, offset, results: rows };
+}
+function getEventDetail(id) {
+  const st = db().prepare(`SELECT * FROM stories WHERE id=? AND status='active'`).get(id);
+  if (!st) return null;
+  st.articles = db().prepare(`SELECT a.id, a.title, a.url, a.published_at, a.discovered_at,
+    s.name AS source_name, s.slug, s.source_type, s.tier, s.country
+    FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.story_id=?
+    ORDER BY COALESCE(a.published_at, a.discovered_at)`).all(id);
+  st.evidence_domains = db().prepare(`SELECT DISTINCT domain, tier, source_type, is_original
+    FROM event_evidence WHERE story_id=? AND is_original=1`).all(id);
+  st.official_source_count = db().prepare(`SELECT COUNT(DISTINCT e.domain) FROM event_evidence e
+    WHERE e.story_id=? AND e.tier='A' AND e.is_original=1`).get(id).n;
+  st.fact_history = db().prepare(`SELECT fact_status, reason, at FROM story_fact_history
+    WHERE story_id=? ORDER BY at`).all(id);
+  return st;
+}
+
 module.exports = { db, diskStatus, searchArticles, latestArticles, getArticle, searchStories, getStory,
+  searchEvents, getEventDetail,
                    trending, listSources, categories, getImageMeta, health, isoAgo };

@@ -1,4 +1,4 @@
-// app.js — <你的域名> 服务层（Phase 4 REST API + Phase 5 MCP + Phase 7 Web UI）
+// app.js — myp.micsdic.dpdns.org 服务层（Phase 4 REST API + Phase 5 MCP + Phase 7 Web UI）
 // Passenger Node 22 · 零框架 · 只读 SQLite · AI 不在链路 · 无任何秘密硬编码
 'use strict';
 const http = require('http');
@@ -13,7 +13,7 @@ const adminsvc = require('./lib/admin');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const SITE_ORIGIN = 'https://<你的域名>';
+const SITE_ORIGIN = 'https://myp.micsdic.dpdns.org';
 
 // ---- Token 从 env.local 读取（chmod 600; 绝不打印/落日志） ----
 function readToken(name) {
@@ -272,12 +272,14 @@ async function initMcp() {
           source: z.string().optional(), language: z.string().optional(),
           sort: z.enum(['relevance', 'recent']).optional(), limit: z.number().optional(), offset: z.number().optional() },
         (a) => lib.searchArticles(a));
-      tool('search_events', 'Search story clusters (same event from multiple outlets).',
-        { q: z.string().optional(), hours: z.number().optional(), category: z.string().optional(),
-          limit: z.number().optional(), offset: z.number().optional() },
-        (a) => lib.searchStories(a));
-      tool('get_event', 'Get one story/event with all its articles and timeline.', { id: z.number() },
-        (a) => lib.getStory(a.id) || { error: 'not found' });
+      tool('search_events', 'Search Event-level intelligence (clustered events; importance major/high, fact_status, independent source counts, AI summary when ai_enhanced). Args: q, min_importance (CRITICAL|HIGH|NOTABLE), hours, ai_only, limit, offset.',
+        { q: z.string().optional(), min_importance: z.enum(['NOTABLE','HIGH','CRITICAL']).optional(),
+          hours: z.number().optional(), ai_only: z.boolean().optional(),
+          category: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() },
+        (a) => lib.searchEvents(a || {}));
+      tool('get_event', 'Get one Event with full evidence: original articles+URLs, source tiers, independent fact sources, official count, fact-status history, AI summary/entities/timeline (ai_enhanced flag marks AI-generated content vs original facts). Args: id.',
+        { id: z.number() },
+        (a) => lib.getEventDetail(a.id) || { error: 'not found' });
       tool('get_article', 'Get one article with full text (72h window) and images.', { id: z.number() },
         (a) => lib.getArticle(a.id) || { error: 'not found' });
       tool('get_trending', 'Current trending stories ranked by heat (distinct-source decay formula).',
@@ -313,7 +315,7 @@ async function initMcp() {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,      // 无状态（主流客户端兼容）
         enableJsonResponse: true,           // 能 JSON 就不开 SSE 流（省内存/防耗尽）
-        allowedHosts: ['<你的域名>'],
+        allowedHosts: ['myp.micsdic.dpdns.org'],
         allowedOrigins: [SITE_ORIGIN],
       });
       await server.connect(transport);
