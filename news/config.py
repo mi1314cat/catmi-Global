@@ -30,7 +30,7 @@ def get(key, default=""):
     return _env.get(key, os.environ.get(key, default))
 
 # --- 网络 ---
-UA = get("COLLECTOR_UA", "NewsResearchBot/0.1 (personal research; +https://<你的域名>)")
+UA = get("COLLECTOR_UA", "NewsResearchBot/0.1 (personal research; +https://myp.micsdic.dpdns.org)")
 HTTP_TIMEOUT = float(get("HTTP_TIMEOUT", "20"))
 HTTP_RETRIES = int(get("HTTP_RETRIES", "3"))
 RETRY_DELAYS = (2.0, 5.0)                       # 指数退避前两级；落库重试用 crawl_tasks.next_attempt_at
@@ -41,6 +41,7 @@ MAX_ITEMS_PER_FEED = int(get("MAX_ITEMS_PER_FEED", "40"))
 SCAN_BATCH = int(get("SCAN_BATCH", "16"))       # 每轮 scan 处理的源数（cron 分片）
 FETCH_BATCH = int(get("FETCH_BATCH", "30"))     # 每轮正文抓取篇数
 IMAGE_BATCH = int(get("IMAGE_BATCH", "10"))
+IMAGES_ENABLED = get("IMAGES_ENABLED", "1") == "1"  # 0=不下载图片, 只保留 URL(省磁盘)
 SOURCE_DISABLE_AFTER = int(get("SOURCE_DISABLE_AFTER", "5"))  # 连续失败 N 次停用
 TASK_RETRY_BACKOFF = (3600, 4 * 3600, 12 * 3600)              # 落库重试: 1h/4h/12h
 TASK_MAX_ATTEMPTS = 3

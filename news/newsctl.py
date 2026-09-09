@@ -66,7 +66,7 @@ def cmd_run(a):
         if level != "emergency":
             out["scan"] = scan(con, f, limit=getattr(a, "scan_limit", None))
             out["fetch"] = extractor.run(con, f, limit=config.FETCH_BATCH)
-            out["images"] = images_mod.run(con, f, limit=config.IMAGE_BATCH)
+            out["images"] = images_mod.run(con, f, limit=config.IMAGE_BATCH) if config.IMAGES_ENABLED else {"skipped": "IMAGES_ENABLED=0 (只存 URL)"}
         else:
             out["skipped"] = "disk emergency — 仅清理模式"
         out["cluster"] = stories.run(con)
