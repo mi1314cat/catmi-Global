@@ -89,3 +89,18 @@
 | RT | ru-rt | en/RU | 100 条 ✓ |
 
 探测失败淘汰: ChinaDaily(404)、RT中文(401)、自由时报/中央社(404, URL 已失效)、YahooJP(403 bot)、Yonhap韩文(404)、Kommersant(RU 602 条, 暂缓可后补)。
+
+# 2026-09-09 主题扩容（+10 源 → 74 源, 新增分类）
+
+用户需求: 不只世界新闻——科技/商业/人生/阅读等分类信息源。全部服务器实测后入册:
+
+| 分类 | 源 | 探测 |
+|---|---|---|
+| tech | 阮一峰周刊(zh) / The Verge / TechCrunch / Ars Technica / MIT TR / GitHub Blog | 全 200 ✓ |
+| business | Product Hunt (50 条) | ✓ |
+| life | Aeon 哲学文化 / The Marginalian | ✓ 各 20 条 |
+| fiction | Reddit r/books (25 条, 低频元数据) | ✓ |
+
+淘汰: 36氪/少数派/IndieHackers/知乎日报（连接拒绝）。分类即 sources.category（tech/business/life/fiction），
+事件聚类按类别各自聚合; 小说类只抓"动态/讨论"元数据, 不抓正文（版权红线）。
+来源发现方法: GitHub awesome-rss 等开源清单 + 逐个实测。
