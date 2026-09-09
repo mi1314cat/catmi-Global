@@ -62,6 +62,25 @@ const STOP = new Set(('the a an and or of to in on for with at by from as is are
   'these those after before over under new says say said will would could news latest').split(' '));
 function tokens(t) { return new Set((t.toLowerCase().match(/[a-z]{3,}/g) || []).filter((w) => !STOP.has(w))); }
 
+// P0-2: 统一 SearchResult —— 所有后端出口必须经此归一化
+function normResult(x, backend, rank, language) {
+  const host = x.source || (x.url ? (new URL(x.url)).hostname : '');
+  return {
+    title: x.title || '',
+    url: x.url || '',
+    canonical_url: normalizeUrl(x.url || ''),
+    source: host,
+    source_id: null,                       // P0-3 由调用方按 domain 查 sources 表填充
+    snippet: (x.snippet || '').slice(0, 300),
+    published_at: x.published || x.publishedDate || null,   // 引擎给出的发布时间; 无则留给 P0-6 链
+    published_at_source: x.published || x.publishedDate ? `engine.${backend}` : null,
+    language: language || '',
+    backend,
+    rank: rank,                            // 后端原始排名位(0起)
+    provider: backend,                     // 向后兼容别名
+  };
+}
+
 function dedup(items) {
   const seenUrl = new Set(); const out = [];
   for (const it of items) {
@@ -96,10 +115,10 @@ async function searxng(q, opts) {
   if (opts.page > 1) p.set('pageno', String(opts.page));
   const r = await fetchText(base.replace(/\/$/, '') + '/search?' + p.toString(), { headers: { Accept: 'application/json' } });
   const d = JSON.parse(r.text);
-  return (d.results || []).slice(0, opts.limit).map((x) => ({
+  return (d.results || []).slice(0, opts.limit).map((x, i) => normResult({
     title: x.title, url: x.url, snippet: (x.content || '').slice(0, 300),
-    source: (new URL(x.url)).hostname, published: x.publishedDate || null, provider: 'searxng',
-  }));
+    published: x.publishedDate || null,
+  }, 'searxng', i, opts.language));
 }
 
 function unwrapDdg(u) {
@@ -129,7 +148,7 @@ async function ddgHtml(q, opts) {
     const title = m[2].replace(/<[^>]+>/g, '').trim();
     const snipM = r.text.slice(m.index, m.index + 3000).match(/class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/);
     const snippet = snipM ? snipM[1].replace(/<[^>]+>/g, '').trim().slice(0, 300) : '';
-    if (title) out.push({ title, url, snippet, source: new URL(url).hostname, published: null, provider: 'ddg' });
+    if (title) out.push(normResult({ title, url, snippet }, 'ddg', out.length, opts.language));
   }
   if (!out.length) throw new Error('0 results (bot-blocked?)');
   return out;
@@ -146,7 +165,7 @@ async function bingHtml(q, opts) {
     const url = m[1].startsWith('http') ? m[1] : 'https://www.bing.com' + m[1];
     const title = m[2].replace(/<[^>]+>/g, '').trim();
     const snip = (m[3].match(/<p[^>]*>([\s\S]*?)<\/p>/) || [, ''])[1].replace(/<[^>]+>/g, '').trim().slice(0, 300);
-    if (title && !url.includes('bing.com/acl')) out.push({ title, url, snippet: snip, source: new URL(url).hostname, published: null, provider: 'bing' });
+    if (title && !url.includes('bing.com/acl')) out.push(normResult({ title, url, snippet: snip }, 'bing', out.length, opts.language));
   }
   if (!out.length) throw new Error('0 results (blocked?)');
   return out;
@@ -163,11 +182,25 @@ async function gnewsRss(q, opts) {
   const r = await fetchText('https://news.google.com/rss/search?' + p.toString(), { timeout: 15000 });
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const out = [];
-  const re = /<item>[\s\S]*?<title>(?:<!\[CDATA\[)?([^<\]]*)(?:\]\]>)?<\/title><link>([^<]+)<\/link>[\s\S]*?<pubDate>([^<]+)<\/pubDate>/g;
+  const re = /<item>[\s\S]*?<\/item>/g;
+  const tf = /<title>(?:<!\[CDATA\[)?([^<\]]*)(?:\]\]>)?<\/title>/;
+  const lf = /<link>([^<]+)<\/link>/;
+  const pf = /<pubDate>([^<]+)<\/pubDate>/;
+  const sf = /<source url="([^"]+)">/;
   let m;
   while ((m = re.exec(r.text)) && out.length < opts.limit) {
-    const title = m[1].replace(/\s+-\s+[^-]{2,40}$/, '').trim();
-    out.push({ title, url: m[2].trim(), snippet: '', source: 'news.google.com', published: new Date(m[3]).toISOString(), provider: 'gnews' });
+    const it = m[0];
+    const tm = it.match(tf); if (!tm) continue;
+    const lm = it.match(lf); if (!lm) continue;
+    const pm = it.match(pf); if (!pm) continue;
+    const title = tm[1].replace(/\s+-\s+[^-]{2,40}$/, '').trim();
+    // 真实出版方域名来自 <source url=""> (gnews 链接本身是重定向)
+    const sm = it.match(sf);
+    const pubUrl = sm ? sm[1] : '';
+    const pubHost = pubUrl ? (new URL(pubUrl)).hostname.replace(/^www\./, '') : '';
+    const x = normResult({ title, url: lm[1].trim(), published: new Date(pm[1]).toISOString() }, 'gnews', out.length, opts.language);
+    if (pubHost) { x.publisher_domain = pubHost; x.canonical_url = pubUrl; x.source = pubHost; }
+    out.push(x);
   }
   if (!out.length) throw new Error('0 results');
   return out;
@@ -187,7 +220,7 @@ async function bingNewsRss(q, opts) {
       const inner = u.searchParams.get('url');
       if (inner && inner.startsWith('http')) url = inner;
     } catch { /* keep */ }
-    out.push({ title: m[1].trim(), url, snippet: '', source: new URL(url).hostname, published: new Date(m[3]).toISOString(), provider: 'bingnews' });
+    out.push(normResult({ title: m[1].trim(), url, published: new Date(m[3]).toISOString() }, 'bingnews', out.length, opts.language));
   }
   if (!out.length) throw new Error('0 results');
   return out;
@@ -200,10 +233,9 @@ async function wikipedia(q, opts) {
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const d = JSON.parse(r.text);
   const titles = d[1] || []; const urls = d[3] || []; const descs = d[2] || [];
-  return titles.map((t, i) => ({
-    title: t, url: urls[i], snippet: (descs[i] || '').slice(0, 300),
-    source: `${lang}.wikipedia.org`, published: null, provider: 'wikipedia',
-  })).filter((x) => x.url);
+  return titles.map((t, i) => normResult({
+    title: t, url: urls[i], snippet: (descs[i] || '').slice(0, 300), source: `${lang}.wikipedia.org`,
+  }, 'wikipedia', i, opts.language)).filter((x) => x.url);
 }
 
 // ---------- 统一入口 ----------
