@@ -70,6 +70,11 @@ def cmd_run(a):
         else:
             out["skipped"] = "disk emergency — 仅清理模式"
         out["cluster"] = stories.run(con)
+        try:
+            from . import evidence as evidence_mod
+            out["evidence"] = evidence_mod.refresh_active(con)
+        except Exception as _e:
+            out["evidence"] = {"error": str(_e)[:120]}
         out["trending"] = trending_mod.run(con)
         out["finished"] = dbm.utcnow()
         dbm.meta_set(con, "last_run", out["finished"])
