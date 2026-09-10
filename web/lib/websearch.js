@@ -238,6 +238,25 @@ async function wikipedia(q, opts) {
   }, 'wikipedia', i, opts.language)).filter((x) => x.url);
 }
 
+// ---------- P1-3: Query Intent 规则路由 (可解释, 零 AI) ----------
+const INTENT_RULES = [
+  ['NEWS', /最新|breaking|突发|今天|今日|本周|latest|\bnews\b|just\s+in/i],
+  ['EVENT', /事件|时间线|发生了什么|outbreak|attack|protest|选举|election|\btimeline\b/i],
+  ['OFFICIAL', /官方|官网|政策|商务部|official|\bdocs?\b|api\s+reference|pricing|changelog|release\s+notes|\bgov\b|ministry/i],
+  ['TECH', /\b(cpu|gpu|api|model|framework|linux|python|javascript)\b|算法|模型|开源|\brepo\b|github|stack\s+trace|\bcode\b/i],
+  ['RESEARCH', /论文|综述|研究报告|\bpaper\b|arxiv|\bstudy\b|\bsurvey\b/i],
+];
+function detectIntent(q) {
+  const hit = [];
+  for (const [name, re] of INTENT_RULES) if (re.test(String(q || ''))) hit.push(name);
+  const intent = hit[0] || 'GENERAL';
+  // intent → 重排权重调整 (NEWS 提新鲜度; OFFICIAL 提官方)
+  const weights = intent === 'NEWS' ? { rel: 0.40, fr: 0.35, q: 0.15, off: 0.10 }
+    : intent === 'OFFICIAL' ? { rel: 0.40, fr: 0.20, q: 0.20, off: 0.20 }
+    : { rel: 0.45, fr: 0.25, q: 0.20, off: 0.10 };
+  return { intent, rules_hit: hit, weights };
+}
+
 // ---------- P0-3: 规则重排 ----------
 const OFFICIAL_TLD = /\.(gov|edu|mil|int)(\.[a-z]{2,3})?$/i;
 const OFFICIAL_PATH = /\/(docs?|api|pricing|changelog|releases?|press|policy)(\/|$)/i;
@@ -287,7 +306,8 @@ function rerank(items, query, opts) {
     const q01 = sq && sq.quality_score != null ? Math.max(0, Math.min(100, sq.quality_score)) / 100 : 0.4; // 未知域=0.4 中性
     const off = officialScore(it, query);
     const penalty = seoFarmPenalty(it, rel);
-    const final = 0.45 * rel + 0.25 * fr + 0.2 * q01 + 0.1 * off - penalty;
+    const W = opts.intent_weights || { rel: 0.45, fr: 0.25, q: 0.2, off: 0.1 };
+    const final = W.rel * rel + W.fr * fr + W.q * q01 + W.off * off - penalty;
     it.relevance_score = +rel.toFixed(3);
     it.freshness_score = +fr.toFixed(3);
     it.source_quality_score = sq ? sq.quality_score : null;
@@ -324,7 +344,9 @@ const PROVIDERS = {
 async function webSearch(query, opts = {}) {
   const limit = Math.min(Math.max(1, +opts.limit || 8), 20);
   const page = Math.max(1, +opts.page || 1);
-  const o = { limit: limit + 4, language: opts.language, region: opts.region, time_range: opts.time_range, category: opts.category, page };
+  const intentInfo = detectIntent(query);
+  const time_range = opts.time_range || (intentInfo.intent === 'NEWS' ? 'week' : undefined);
+  const o = { limit: limit + 4, language: opts.language, region: opts.region, time_range, category: opts.category, page, intent_weights: intentInfo.weights };
   const wanted = opts.providers
     ? opts.providers.split(',').map((s) => s.trim()).filter((s) => PROVIDERS[s])
     : Object.keys(PROVIDERS);
@@ -351,6 +373,7 @@ async function webSearch(query, opts = {}) {
   items = main.slice(0, limit);
   return {
     query, scope: 'web', limit, page,
+    intent: { intent: intentInfo.intent, rules_hit: intentInfo.rules_hit },
     elapsed_ms: Date.now() - t0,
     providers,
     results: items,
