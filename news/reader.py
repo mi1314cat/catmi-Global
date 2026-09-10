@@ -126,6 +126,39 @@ def classify_block(headers: dict, html: str) -> str | None:
     return None
 
 
+# P0-6: published_at 新鲜度链 — meta → JSON-LD/OG → <time> → URL 日期 → htmldate(若可用) → null
+_URL_DATE = re.compile(r"/(20\d{2})[-/](\d{2})[-/](\d{2})/")
+_BODY_DATE = re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b")
+
+
+def infer_published(html: str, url: str, ex_date=None):
+    """返回 (iso_date, source_tag)。绝不使用抓取时间冒充发布时间。"""
+    if ex_date:
+        return str(ex_date)[:10], "extractor"
+    head = html[:600000]
+    for pat, tag in ((r'property=["\']article:published_time["\'][^>]+content=["\']([\dTLZ:+-]{10,30})', "meta"),
+                     (r'"datePublished"\s*:\s*"([\dTLZ:+-]{10,30})"', "json_ld"),
+                     (r'property=["\']og:updated_time["\'][^>]+content=["\']([\dTLZ:+-]{10,30})', "meta"),
+                     (r'<time[^>]+datetime=["\']([\dTLZ:+-]{10,30})["\']', "html_time")):
+        m = re.search(pat, head, re.I)
+        if m:
+            return m.group(1)[:10], tag
+    m = _URL_DATE.search(url)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "url_pattern"
+    try:
+        from htmldate import extract_date  # trafilatura 生态, 若在 venv 中则优先级最高兜底
+        d = extract_date(html, original_date=True)
+        if d:
+            return d.isoformat(), "htmldate"
+    except Exception:
+        pass
+    m = _BODY_DATE.search((html or "")[:200000])
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "body_regex"
+    return None, None
+
+
 def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dict:
     max_chars = max(200, min(int(max_chars or MAX_CHARS_DEFAULT), MAX_CHARS_ABS))
     out = {"url": url, "status": "failed", "title": None, "author": None, "published": None,
@@ -174,7 +207,9 @@ def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dic
         out["status"] = "ok"
         out["title"] = ex.get("title")
         out["author"] = ex.get("author") or meta.get("author")
-        out["published"] = ex.get("date")
+        pub, pub_src = infer_published(html, url, ex.get("date"))
+        out["published"] = pub
+        out["published_at_source"] = pub_src       # extractor|meta|json_ld|html_time|url_pattern|htmldate|body_regex|None
         raw = ex.get("text") or ""
         sc = scrub_content(raw)
         if len(sc["content"]) > max_chars:
