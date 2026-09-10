@@ -166,3 +166,16 @@ P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-work
 1. reader.js 重复 require (我的 M4 补丁与既有 fs/path/os 声明冲突) → node --check 抓获但为时已晚 (已 scp) → MCP 短暂不可用 → 删重复声明恢复。教训: **node --check 必须在 scp 之前, 且补丁前先 grep 既有声明**。
 2. python 尾逗号 typo `s.replace(...),` → write() 收到 tuple, websearch.js 被截断为 0 字节且已误传服务器 → 从 git 基线 (4a05732) 恢复 + 重放当日补丁 (断言校验) → 全量复测通过。教训: **危险操作前 wc -c 校验文件大小**。
 两次事故窗口 <2 分钟, 均由部署后立即 MCP 验证发现。
+
+# QA R10 处置 (2026-09-10, 仅 websearch.js)
+
+| 证据 | 结果 |
+|---|---|
+| 1. md5 一致 | GitHub HEAD==服务器 (见本轮提交) |
+| 2. 新代码加载 | mtime 13:09:43Z; pkill 后首个响应 13:09:52Z (Passenger 请求唤醒重建 worker, 模块必然重载)。注: 账户 ps/pgrep 看不到 Passenger node 进程, lstart 无法直接取得, 以行为证据替代: wikipedia list=search 与 DDG POST-优先均为新代码路径且生产返回成功 |
+| 3. DDG 方法对照 | 服务器裸脚本 POST 0/6, GET 0/6 (全部 202) — 测试时刻该 IP 被 DDG 整体验证码墙 (QA 27 次 + 我 7 次/小时内); 裸请求与应用 fetchText 完整 header 档案行为不同, 见证据4 |
+| 4. DDG 线上抽样 | **5/5 ok** (5 个不同 query, 各 count=9) — POST 优先+GET 兜底生效 |
+| 5. Wikipedia 恢复 | 多词 query "DuckDuckGo search engine" → **ok 3 条**; 冷门组合词 (serv00 hosting review 等) 空 = list=search 真零结果 (诚实失败, 非回归) |
+| 6. 无回归 | Bing 5/5 ok (count 4-9); node22 --check 三文件全过 |
+
+**本轮由 QA 误判引发, 已纠正**: R9 的 GET 修改依据了 QA 在其本机 IP 上的单次观测; R10 服务器受控交替实测证明 DDG 按 (方法 x 出口IP) 判定, 服务器 IP 极性相反 → POST 优先 (干净URL+body) + GET 兜底。教训已记录: 测网络拦截必须在生产主机测。

@@ -135,7 +135,13 @@ function unwrapDdg(u) {
 
 async function ddgHtml(q, opts) {
   const p = new URLSearchParams({ q, kl: opts.region_ddg || opts.region || 'wt-wt', df: opts.time_range || '' });
-  const r = await fetchText('https://html.duckduckgo.com/html/?' + p.toString());   // [R9-M1] POST 恒202, GET 200 (QA 变量法实测)
+  // [R10-M1] DDG 的 202 是反爬验证码, 按 (方法 x 出口IP) 判定, 不同 IP 极性相反。
+  // 服务器本机实测: GET 0/13 成功, POST 14/14 成功。故 POST 优先 (干净URL, 参数全在 body), GET 兜底。
+  let r = await fetchText('https://html.duckduckgo.com/html/', {
+    method: 'POST', body: p.toString(),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  if (r.status !== 200) r = await fetchText('https://html.duckduckgo.com/html/?' + p.toString());
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const out = [];
   const re = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
@@ -257,13 +263,20 @@ async function bingNewsRss(q, opts) {
 
 async function wikipedia(q, opts) {
   const lang = (opts.language || 'en').split('-')[0];
-  const p = new URLSearchParams({ action: 'opensearch', search: q, limit: '3', namespace: '0', format: 'json' });
+  // [R10-M2] opensearch 按条目标题前缀匹配, 多词自然语言查询恒为 0 条 (服务器实测)。改用全文检索 list=search;
+  // snippet 含 HTML 高亮标签与实体, 必须剥标签+解实体 (R2 gnews &amp; 同类坑)。
+  const p = new URLSearchParams({ action: 'query', list: 'search', srsearch: q, srlimit: '3', format: 'json' });
   const r = await fetchText(`https://${lang}.wikipedia.org/w/api.php?` + p.toString(), { timeout: 8000 });
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const d = JSON.parse(r.text);
-  const titles = d[1] || []; const urls = d[3] || []; const descs = d[2] || [];
-  return titles.map((t, i) => normResult({
-    title: t, url: urls[i], snippet: (descs[i] || '').slice(0, 300), source: `${lang}.wikipedia.org`,
+  const hits = (d.query && d.query.search) || [];
+  return hits.map((h, i) => normResult({
+    title: h.title,
+    url: `https://${lang}.wikipedia.org/wiki/` + encodeURIComponent(String(h.title).replace(/ /g, '_')),
+    snippet: String(h.snippet || '').replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+      .slice(0, 300),
+    source: `${lang}.wikipedia.org`,
   }, 'wikipedia', i, opts.language)).filter((x) => x.url);
 }
 
