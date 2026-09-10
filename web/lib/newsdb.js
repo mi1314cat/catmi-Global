@@ -34,6 +34,23 @@ function ftsQuery(q, mode) {
   return (mode === 'or' ? quoted.join(' OR ') : quoted.join(' '));
 }
 
+// P1-2: CJK 术语提取 (FTS5 unicode61 把中文长串作整 token, 子串不命中)
+function cjkTerms(q) { return (String(q || '').match(/[\u4e00-\u9fff]{2,}/g) || []).slice(0, 4); }
+
+// 命中窗口 snippet: 找词在摘要/正文中的位置, 取窗口 (≤500 字符), 标 UNTRUSTED 由 toSearchEvidence 处理
+function hitSnippet(text, terms) {
+  const t = String(text || '');
+  if (!t) return '';
+  for (const term of terms) {
+    const i = t.indexOf(term);
+    if (i >= 0) {
+      const s = Math.max(0, i - 100);
+      return (s > 0 ? '…' : '') + t.slice(s, s + 500).replace(/<[^>]+>/g, '') + (s + 500 < t.length ? '…' : '');
+    }
+  }
+  return t.slice(0, 200);
+}
+
 function isoAgo(hours) {
   return new Date(Date.now() - hours * 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
 }
@@ -68,27 +85,48 @@ function searchArticles({ q, hours, category, source, language, sort, limit, off
        FROM articles_fts f JOIN articles a ON a.id = f.rowid JOIN sources s ON s.id = a.source_id
        WHERE articles_fts MATCH ?${wsql} ${order} LIMIT ? OFFSET ?`
     ).all(fts, ...params, limit, offset);
-    if (!rows.length) { // FTS 无命中 → LIKE 兜底（真正带上文本过滤）
-      return searchArticles({ q: null, hours, category, source, language, sort, limit, offset, like: q });
+    if (!rows.length) { // P1-2: AND 0 命中 → OR 重试 → 仍无才 LIKE 兜底
+      const orSql = String(n_total_select || '');
+      rows = db().prepare(
+        `SELECT COUNT(*) AS n FROM articles_fts f JOIN articles a ON a.id = f.rowid
+         JOIN sources s ON s.id = a.source_id WHERE articles_fts MATCH ?${wsql}`).get(ftsQuery(q, 'or'), ...params);
+      // 完整 OR 查询重跑 (rows + total)
+      total = rows.n;
+      rows = db().prepare(
+        `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
+              a.published_at, a.fetched_at, a.discovered_at, a.language, a.summary_text, a.content,
+              a.extract_method, a.category, a.status, a.image_main_url,
+              s.id AS s_id, s.name, s.slug AS source_slug, s.source_type, s.tier, s.quality_score, s.verification_status,
+              snippet(articles_fts, 1, '[', ']', '…', 12) AS snippet
+         FROM articles_fts f JOIN articles a ON a.id = f.rowid JOIN sources s ON s.id = a.source_id
+         WHERE articles_fts MATCH ?${wsql} ORDER BY bm25(articles_fts), a.discovered_at DESC LIMIT ? OFFSET ?`
+      ).all(ftsQuery(q, 'or'), ...params, limit, offset);
+      if (!rows.length) return searchArticles({ q: null, hours, category, source, language, sort, limit, offset, like: q });
     }
   } else {
     const like = likeParam && String(likeParam).trim() ? `%${String(likeParam).trim()}%`
                : (q && String(q).trim() ? `%${String(q).trim()}%` : null);
-    const likePart = '(a.title LIKE ? OR a.original_title LIKE ?)';
-    const w2 = like ? (where.length ? ` WHERE ${where.join(' AND ')} AND ${likePart}` : ` WHERE ${likePart}`)
+    // P1-2: CJK 修复 — 每个中文词组独立 OR 匹配 (title+摘要), 不再要求整串子串
+    const terms = like ? [like, ...cjkTerms(like).map((t) => `%${t}%`)] : null;
+    const termSql = '(a.title LIKE ? OR a.original_title LIKE ? OR a.summary_text LIKE ?)';
+    const likePart = terms ? `(${terms.map(() => termSql).join(' OR ')})` : null;
+    const w2 = likePart ? (where.length ? ` WHERE ${where.join(' AND ')} AND ${likePart}` : ` WHERE ${likePart}`)
                     : (where.length ? ' WHERE ' + where.join(' AND ') : '');
-    const lp = like ? [like, like, ...params] : params;
+    const lp = terms ? terms.flatMap((t) => [t, t, t]).concat(params) : params;
     const wfull = w2;
     total = db().prepare(
       `SELECT COUNT(*) AS n FROM articles a JOIN sources s ON s.id = a.source_id${wfull}`
     ).get(...lp).n;
     rows = db().prepare(
-      `SELECT a.id, a.title, a.url, a.author, a.published_at, a.discovered_at, a.language,
-              a.category, a.story_id, a.status, a.image_main_url,
-              s.name AS source_name, s.slug AS source_slug
+      `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
+              a.published_at, a.fetched_at, a.discovered_at, a.language, a.summary_text, a.extract_method,
+              a.category, a.status, a.image_main_url,
+              s.id AS s_id, s.name, s.slug AS source_slug, s.source_type, s.tier, s.quality_score, s.verification_status
        FROM articles a JOIN sources s ON s.id = a.source_id${wfull}
        ORDER BY COALESCE(a.published_at, a.discovered_at) DESC LIMIT ? OFFSET ?`
     ).all(...lp, limit, offset);
+    const cterms = like ? cjkTerms(like) : [];
+    for (const r of rows) r.snippet = hitSnippet(r.summary_text, cterms.length ? cterms : [String(like || '').replace(/%/g, '')]);
   }
   return { total, limit, offset, results: rows };
 }
