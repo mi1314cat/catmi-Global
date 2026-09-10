@@ -60,9 +60,10 @@ function searchArticles({ q, hours, category, source, language, sort, limit, off
       ? 'ORDER BY COALESCE(a.published_at, a.discovered_at) DESC'
       : 'ORDER BY bm25(articles_fts), a.discovered_at DESC';
     rows = db().prepare(
-      `SELECT a.id, a.title, a.url, a.author, a.published_at, a.discovered_at, a.language,
-              a.category, a.story_id, a.status, a.image_main_url,
-              s.name AS source_name, s.slug AS source_slug,
+      `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
+              a.published_at, a.fetched_at, a.discovered_at, a.language, a.summary_text, a.content,
+              a.extract_method, a.category, a.status, a.image_main_url,
+              s.id AS s_id, s.name, s.slug AS source_slug, s.source_type, s.tier, s.quality_score, s.verification_status,
               snippet(articles_fts, 1, '[', ']', '…', 12) AS snippet
        FROM articles_fts f JOIN articles a ON a.id = f.rowid JOIN sources s ON s.id = a.source_id
        WHERE articles_fts MATCH ?${wsql} ${order} LIMIT ? OFFSET ?`
@@ -161,17 +162,15 @@ function getStory(id) {
   const st = db().prepare('SELECT * FROM stories WHERE id = ?').get(+id);
   if (!st) return null;
   const arts = db().prepare(
-    `SELECT a.id, a.title, a.url, a.author, a.published_at, a.discovered_at, a.category,
-            a.language, a.image_main_url, a.status, a.extract_method,
-            s.name AS source_name, s.slug AS source_slug
+    `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
+            a.published_at, a.fetched_at, a.discovered_at, a.language, a.image_main_url, a.status,
+            a.extract_method, a.summary_text,
+            s.id AS s_id, s.name, s.slug AS source_slug, s.source_type, s.tier, s.quality_score, s.verification_status
      FROM story_articles sa JOIN articles a ON a.id = sa.article_id
      JOIN sources s ON s.id = a.source_id WHERE sa.story_id = ?
      ORDER BY COALESCE(a.published_at, a.discovered_at) ASC`).all(+id);
   st.articles = arts;
-  st.timeline = arts.map((a) => ({
-    at: a.published_at || a.discovered_at, article_id: a.id,
-    title: a.title, source: a.source_name, url: a.url,
-  }));
+  st.timeline = arts.map((a) => toSearchEvidence(a));
   return st;
 }
 
@@ -311,6 +310,26 @@ function getEventDetail(id) {
   return st;
 }
 
+// P1-1: 检索结果统一 Evidence 形状 (映射层, 零新存储; snippet 来自 FTS5 仍属 UNTRUSTED)
+function toSearchEvidence(r, extra) {
+  const ev = toEvidence(r, r);
+  ev.snippet = (r.snippet || ev.excerpt || '').slice(0, 500);
+  ev.untrusted = true;
+  if (extra) Object.assign(ev, extra);
+  return ev;
+}
+
+function storyEvidence(storyId, k = 3) {
+  // Event -> Evidence -> Article -> Source 追溯 (每事件最多 k 条, 复用 P0-1 模型)
+  return db().prepare(`SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url,
+    a.author, a.source_id, a.published_at, a.fetched_at, a.discovered_at, a.language,
+    a.summary_text, a.content, a.extract_method,
+    s.id AS s_id, s.name, s.slug, s.source_type, s.tier, s.quality_score, s.verification_status
+    FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.story_id=?
+    ORDER BY COALESCE(a.published_at, a.discovered_at) LIMIT ?`).all(storyId, k)
+    .map((r) => toSearchEvidence(r));
+}
+
 function sourceQualityByDomains(domains) {
   // P0-3: domain -> sources 表质量 (一次查询, 不建第二份质量表)
   const out = {};
@@ -325,6 +344,6 @@ function sourceQualityByDomains(domains) {
   }
   return out;
 }
-module.exports = { sourceQualityByDomains, db, diskStatus, searchArticles, latestArticles, getArticle, searchStories, getStory,
+module.exports = { sourceQualityByDomains, toSearchEvidence, storyEvidence, db, diskStatus, searchArticles, latestArticles, getArticle, searchStories, getStory,
   searchEvents, getEventDetail,
                    trending, listSources, categories, getImageMeta, health, isoAgo };
