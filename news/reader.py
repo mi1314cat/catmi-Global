@@ -112,6 +112,20 @@ def scrub_content(content: str) -> dict:
     }
 
 
+# P0-5: bot/paywall 状态细分 — 不绕过, 只诚实识别
+_CF_MARK = re.compile(r"just a moment|cf-chl|turnstile|cf-browser-verification|attention required", re.I)
+
+
+def classify_block(headers: dict, html: str) -> str | None:
+    """返回 bot_protection | paywall | None。判定顺序: 头 → 正文特征 → 结构化标记。"""
+    h = {str(k).lower(): str(v).lower() for k, v in (headers or {}).items()}
+    if h.get("cf-mitigated") == "challenge" or _CF_MARK.search(html[:8000] or ""):
+        return "bot_protection"
+    if re.search(r'"isAccessibleForFree"\s*:\s*false', (html or "")[:400000], re.I):
+        return "paywall"
+    return None
+
+
 def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dict:
     max_chars = max(200, min(int(max_chars or MAX_CHARS_DEFAULT), MAX_CHARS_ABS))
     out = {"url": url, "status": "failed", "title": None, "author": None, "published": None,
@@ -132,8 +146,16 @@ def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dic
     finally:
         f.close()
     if res.status in (401, 403, 429):
-        out["status"] = "inaccessible"
-        out["error"] = f"HTTP {res.status} (access control / rate limit — 不绕过)"
+        kind = classify_block(res.headers, "")
+        if res.status == 401:
+            out["status"] = "login_required" if not kind else kind
+            out["error"] = "HTTP 401 (login required — 不绕过)"
+        elif kind == "bot_protection":
+            out["status"] = "bot_protection"
+            out["error"] = f"HTTP {res.status} + challenge page (Cloudflare 等 — 不绕过)"
+        else:
+            out["status"] = "inaccessible"
+            out["error"] = f"HTTP {res.status} (access control / rate limit — 不绕过)"
         return out
     ctype = (getattr(res, "headers", {}) or {}).get("content-type", "")
     if ctype and not ctype.split(";")[0].strip().startswith(("text/html", "text/plain", "application/xhtml", "application/xml", "text/xml", "application/json")):
@@ -170,6 +192,17 @@ def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dic
         out["method"] = ex["method"]
     else:
         # 正文提取失败 — 可能是 JS 渲染页或极端反爬
+        blk = classify_block(getattr(res, "headers", {}) or {}, html)
+        short = len(ex.get("text") or "") < 200
+        if blk == "paywall" or (blk is None and res.status in (402, 403) and short and
+                                re.search(r"subscri|paywall|premium", html[:40000], re.I)):
+            out["status"] = "paywall"
+            out["error"] = "paywall detected (isAccessibleForFree:false 或订阅墙特征) — 不绕过"
+            return out
+        if blk == "bot_protection":
+            out["status"] = "bot_protection"
+            out["error"] = "bot protection detected (challenge page) — 不绕过"
+            return out
         title_m = re.search(r"<title[^>]*>([^<]{4,300})</title>", html, re.I)
         if title_m and len(html) > 20000:
             out["status"] = "needs_js"        # 有完整 HTML 但无正文 → 动态渲染概率高
