@@ -197,7 +197,10 @@ async function gnewsRss(q, opts) {
     const pm = it.match(pf); if (!pm) continue;
     const gm = it.match(gf);
     const title = tm[1].replace(/\s+-\s+[^-]{2,40}$/, '').trim();
-    const snip = gm ? gm[1].replace(/<[^>]+>/g, '').trim().slice(0, 300) : '';
+    // [R2-03] gnews description 是实体转义的 HTML: 先解实体再剥标签, 否则 snippet=噪声且污染打分
+    const snip = gm ? gm[1]
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+      .replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200) : '';
     // 真实出版方域名来自 <source url=""> (gnews 链接本身是重定向)
     const sm = it.match(sf);
     const pubUrl = sm ? sm[1] : '';
@@ -318,7 +321,7 @@ function rerank(items, query, opts) {
     const fr = freshnessScore(it.published_at, halfLifeH);
     const dom = (it.publisher_domain || it.source || '').replace(/^www\./, '');
     const sq = res(dom) || res(it.source || '') || null;
-    const AGG = /^(msn\.com|news\.google\.com|www\.bing\.com|bing\.com)$/.test(dom);   // [QA-13] 聚合/跳转站
+    const AGG = /^(msn\.com|news\.google\.com|bing\.com)$/.test(dom);   // [R2-5.2] dom 已去 www, 精简死分支
     const q01 = AGG ? 0.15 : (sq && sq.quality_score != null ? Math.max(0, Math.min(100, sq.quality_score)) / 100 : 0.4);
     const off = officialScore(it, query);
     const penalty = seoFarmPenalty(it, rel) + (AGG ? 0.05 : 0);
@@ -345,7 +348,7 @@ function rerank(items, query, opts) {
     }
     inWin.push(it);
   }
-  items = inWin; outWin.forEach((x) => filtered.push(x));
+  items = inWin;   // [R2-01] filtered 合并移到 return (修复未定义崩溃)
   // Diversity: 同域≤2 (publisher_domain/source), 超出移入 filtered 保留
   const cap = Math.max(1, +opts.domain_cap || 2);
   const cnt = {}; const main = []; const filtered2 = [];
@@ -355,7 +358,7 @@ function rerank(items, query, opts) {
     (cnt[d] <= cap ? main : filtered2).push(it);
     if (cnt[d] > cap) it.filtered_reason = `domain_cap:${d}`;
   }
-  return { main, filtered: filtered2 };
+  return { main, filtered: outWin.concat(filtered2) };   // [R2-01]
 }
 
 // ---------- 统一入口 ----------
@@ -378,22 +381,27 @@ async function webSearch(query, opts = {}) {
     ? opts.providers.split(',').map((s) => s.trim()).filter((s) => PROVIDERS[s])
     : Object.keys(PROVIDERS);
   const t0 = Date.now();
-  const settled = await Promise.allSettled(
-    wanted.map((name) => PROVIDERS[name].fn(query, o).then((rs) => ({ name, results: rs, t: Date.now() }))));
+  // [R2-06] Promise.all + 内部 catch: 失败 provider 也有真实 latency
+  const settled = await Promise.all(
+    wanted.map(async (name) => {
+      const t = Date.now();
+      try {
+        const rs = await PROVIDERS[name].fn(query, o);
+        return { name, results: rs, latency_ms: Date.now() - t };
+      } catch (e) {
+        return { name, error: String((e && e.message) || e).slice(0, 120), latency_ms: Date.now() - t };
+      }
+    }));
   const providers = [];
   let items = [];
-  settled.forEach((s, i) => {
-    const name = wanted[i];
-    const latency_ms = (s.value && s.value.t ? s.value.t : Date.now()) - t0;
-    if (s.status === 'fulfilled' && s.value.results.length) {
-      items.push(...s.value.results);
-      providers.push({ provider: name, status: 'ok', latency_ms, count: s.value.results.length });
+  for (const s of settled) {
+    if (s.results && s.results.length) {
+      items.push(...s.results);
+      providers.push({ provider: s.name, status: 'ok', latency_ms: s.latency_ms, count: s.results.length });
     } else {
-      const err = s.status === 'rejected' ? String(s.reason && s.reason.message || s.reason).slice(0, 120)
-        : (s.status === 'fulfilled' ? 'empty' : 'unknown');
-      providers.push({ provider: name, status: 'error', error: err, latency_ms });
+      providers.push({ provider: s.name, status: 'error', error: s.error || 'empty', latency_ms: s.latency_ms });
     }
-  });
+  }
   items = dedup(items);
   const unranked = items.slice();                          // 旧顺序(诊断对比用)
   const { main, filtered } = rerank(items, query, opts);

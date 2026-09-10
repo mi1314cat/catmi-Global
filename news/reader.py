@@ -226,6 +226,8 @@ def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dic
         # [QA-17] 内容门禁: 太短或 consent/redirect 特征 → 不算真实文章 (不破坏 deep_search 交叉验证)
         if len(sc["content"]) < 400 or _INTERSTITIAL.search((out["title"] or "") + " " + sc["content"][:600]):
             out["status"] = "needs_js"
+            out["published"] = None                # [R2-07] 门户页臆造日期一并清除
+            out["published_at_source"] = None
             out["error"] = "interstitial/consent page or too little text (not a real article)"
             return out
         out["images"] = [x for x in [ex.get("image") or meta.get("image")] if x]

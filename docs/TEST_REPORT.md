@@ -32,3 +32,28 @@
 | NOTE-2 | Info | unranked_first3 | 非黑洞, 是重排前快照(设计如此) | — | QA 自行更正; 保留 | 📄 DOCUMENTED |
 
 回归证据: 2026-09-09 MCP 实测 (bingnews 真实域名+snippet / trending hours=48 生效 / get_event 8.4KB 无 fingerprint / source_count=DISTINCT / consent→needs_js / 中文 intent→EVENT / deep_search 聚合站降权)。
+
+# QA Round 2 — 独立复验 + Developer 处置 (2026-09-09)
+
+> QA 结论: 12 完全修复 / 3 部分 / 1 未进仓库 / 3 新增回归。QA 自我更正: source_quality_scocountry 为截断显示假象, 已从缺陷清单移除。
+
+## ID 映射补全 (§9 追溯性)
+Round1 QA-3=gnews snippet 空 / QA-10=search_intelligence 冗余 / QA-20=providers latency (正文已述, 此表补全)。
+R2-01=filtered 崩溃 / R2-02=getArticle SQL 注释 / R2-03=gnews 实体噪声 / R2-04=reader drain / R2-05=searchStories 白名单+articles上限 / R2-06=latency 失败路径 / R2-07=interstitial published。
+
+## Round 2 处置
+| ID | Sev | 处置 | 回归证据 (线上实测) |
+|---|---|---|---|
+| R2-01 | P0 | rerank: 删 forEach 行, return outWin.concat(filtered2); undated 保留(决策: 无日期≠过期, published_at=null 诚实暴露) | 参数矩阵 day/week/month/year/page/category/region/limit 9/9 不崩 |
+| R2-02 | P0 | getArticle 注释移出模板字符串 | get_article(id=7) OK, images 无 local_path |
+| R2-04 | P0 | reader.js finish() 补 queue.shift() drain (承认 R1 误报已修, 本轮 SHA 0dcd794c→3a7db467 确认变化) | 并发场景待 QA 压测复验 |
+| R2-03 | P1 | gnews: 解实体(&lt/&gt&quot&#39&amp)→剥标签→200字 | "OpenAI claims GPT-6 Astra is an ethereal..." 真实摘要 |
+| R2-05 | P1 | searchStories 白名单 + getEventDetail articles LIMIT 10 | search_intelligence 无 fingerprint |
+| R2-06 | P1 | Promise.all+内部 catch, 每 provider 独立 t | providers: bingnews ok 269 / wikipedia ok 151 / 失败项独立耗时 |
+| R2-07 | P1 | interstitial 分支 published=None | news.google.com→needs_js, published:None |
+| R2-§5 | P2 | 删 _legacySqDisabled 死代码 / AGG 死分支精简 / trending.py window_hours=24 / reader 缓存无TTL 记录为已知限制(重启生效) | node --check+ast 全过 |
+| R2-§6 | P2 | 冒烟矩阵 A(参数 9 项)+B(11 工具) 纳入本轮回归, 全通过 | A 9/9, B 11/11 |
+
+## 验收纪律 (QA §6 建议, Developer 采纳)
+- 每条 FIXED 附线上实测输出 (本表已执行)
+- 提交前校验目标文件 blob SHA 变化 (本轮执行: websearch eb08699c / newsdb 5f58b81a / reader 3a7db467 / reader.py / trending.py 均变化)

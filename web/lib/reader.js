@@ -14,7 +14,13 @@ const queue = [];
 function exec(url, timeoutMs, maxChars) {
   return new Promise((resolve) => {
     let done = false;
-    const finish = (v) => { if (!done) { done = true; running--; resolve(v); } };
+    const finish = (v) => {
+      if (done) return;
+      done = true; running--;
+      const next = queue.shift();          // [R2-04] 排空队列: 并发≥3 不再永久 pending
+      if (next) next();
+      resolve(v);
+    };
     running++;
     const p = spawn(PY, ['-m', 'news.reader', url, `--timeout=${Math.round(timeoutMs / 1000) - 4}`, `--max-chars=${maxChars || 12000}`],
       { cwd: CWD, timeout: timeoutMs, killSignal: 'SIGKILL' });

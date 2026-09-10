@@ -159,8 +159,8 @@ function getArticle(id) {
   if (!a) return null;
   delete a.raw_path;
   a.images = db().prepare(
-    `SELECT id, original_url, content_hash, width, height, mime, main   // [QA-9] 不暴露 local_path
-     FROM images WHERE article_id = ?`).all(+id);
+    `SELECT id, original_url, content_hash, width, height, mime, main
+     FROM images WHERE article_id = ?`).all(+id);   // [QA-9] 不暴露 local_path
   if (a.story_id) {
     a.story = db().prepare(
       `SELECT id, title, first_seen, last_updated, heat, importance, category, source_count
@@ -183,7 +183,11 @@ function searchStories({ q, hours, category, limit, offset }) {
     `SELECT COUNT(*) AS n FROM stories st ${join}${wsql}`).get(...params).n;
   const order = fts ? 'ORDER BY bm25(stories_fts)' : 'ORDER BY st.last_updated DESC';
   const rows = db().prepare(
-    `SELECT st.*, ${fts ? 'bm25(stories_fts) AS rank' : 'NULL AS rank'}
+    `SELECT st.id, st.title, st.summary, st.first_seen, st.last_updated, st.heat, st.importance,
+            st.category, st.language, st.article_count, st.source_count, st.video_count, st.status,
+            st.fact_status, st.independent_source_count,
+            st.ai_enhanced, st.ai_model, st.ai_at, st.ai_summary, st.ai_entities, st.ai_timeline,
+            ${fts ? 'bm25(stories_fts) AS rank' : 'NULL AS rank'}
      FROM stories st ${join}${wsql} ${order} LIMIT ? OFFSET ?`
   ).all(...params, limit, offset);
   const artStmt = db().prepare(
@@ -389,20 +393,6 @@ function sourceQualityMap() {
 function sourceQualityByDomains(domains) {
   const m = sourceQualityMap(); const out = {};
   for (const d0 of domains) { if (!d0) continue; const d = String(d0).toLowerCase().replace(/^www\./, ''); if (m.has(d)) out[d0] = m.get(d); }
-  return out;
-}
-function _legacySqDisabled() {
-  // P0-3: domain -> sources 表质量 (一次查询, 不建第二份质量表)
-  const out = {};
-  for (const d0 of domains) {
-    if (!d0) continue;
-    const d = String(d0).toLowerCase().replace(/^www\./, '');
-    for (const suffix of [d, '%' + d]) {
-      const rows = db().prepare(`SELECT id, name, source_type, tier, quality_score, site_url, feed_url FROM sources
-        WHERE disabled=0 AND (site_url LIKE ? OR feed_url LIKE ?) LIMIT 1`).all(d + '%', '%' + d + '%');
-      if (rows.length) { const r = rows[0]; out[d0] = { source_id: r.id, name: r.name, source_type: r.source_type, tier: r.tier, quality_score: r.quality_score }; break; }
-    }
-  }
   return out;
 }
 module.exports = { sourceQualityByDomains, toSearchEvidence, storyEvidence, db, diskStatus, searchArticles, latestArticles, getArticle, searchStories, getStory,
