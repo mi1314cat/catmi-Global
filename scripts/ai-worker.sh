@@ -3,6 +3,7 @@
 set -u
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJ=$(dirname "$SCRIPT_DIR")
+cd "$PROJ" || exit 1   # [R6-P1-S3] cron cwd=$HOME; python -c 用 cwd 作 sys.path[0]
 exec "$PROJ/venv/bin/python" -c '
 from news import db as dbm
 from news import ai

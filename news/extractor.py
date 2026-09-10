@@ -85,7 +85,9 @@ def run(con, fetcher, limit=None):
         JOIN sources s ON s.id=a.source_id
         WHERE t.kind='article' AND t.state IN ('pending','failed')
           AND (t.next_attempt_at IS NULL OR t.next_attempt_at<=?)
-        ORDER BY t.id LIMIT ?""", (now, limit or config.FETCH_BATCH)).fetchall()
+          AND a.source_id NOT IN (SELECT COALESCE(source_id,-1) FROM crawl_errors
+                                  WHERE at>=? GROUP BY source_id HAVING COUNT(*)>=?)   -- [R6-P0-S2] 来源熔断
+        ORDER BY t.id LIMIT ?""", (now, dbm.iso_ago(hours=24), config.SOURCE_BREAKER_ERRORS, limit or config.FETCH_BATCH)).fetchall()
     stats = {"done": 0, "noextract": 0, "failed": 0, "dupe": 0}
     for t in tasks:
         con.execute("UPDATE crawl_tasks SET state='running', updated_at=? WHERE id=?", (now, t["tid"]))

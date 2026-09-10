@@ -88,3 +88,17 @@ R2 的 getEventDetail/trending.py 两项声明未实现 — 根因: replace 锚�
 | R4-§8 新验收纪律 | 采纳: 改 SELECT 列须查下游消费方(toEvidence 依赖 a.summary_text/a.content); 改过滤判据须多层一致 | 已写入本报告 |
 
 R4-P2-A(gnews 真实 URL)属功能扩展, 按项目边界不实施 (QA 同意)。P2/P3 剩余项仅记录。
+
+# QA Round 6 — 服务器层审计处置 (2026-09-10)
+
+| ID | 处置 | 运行时证据 |
+|---|---|---|
+| P0-S1 文件权限 | 8 目录 700 + db/备份 600 (无代码改动) | stat: news.db -rw-------, backup -rw-------, database 目录 drwx------ |
+| P0-S2 fetch 0% | 三层修复: Chrome UA(bot UA 被 WAF 403) + http2=False(StreamReset) + 来源熔断(24h 内 >=30 错误暂停) | extractor.run 实测: **done 29/30 (97%), 35s** (修复前 0/30, 165s); 熔断窗口首次实现错用 at>=now(未来) 已改 at>=24h 前 |
+| P1-S3 ai-worker.sh | cd "$PROJ" 一行 | 手动运行: 无 ModuleNotFoundError, 输出正常 stats dict |
+| R5-P0-A evidence 归零 | evidence.push 移到跳转链过滤前 (与可读性解耦) + gaps 改由 evidence 推导 | deep_search "Ukraine drone strike Kyiv television": evidence 8 (原 0), readings 3, gaps [] |
+| 停止条件 4 | P2/P3 全部书面接受不修 → docs/BACKLOG.md | 已建 |
+| 停止条件 5 | 可复跑只读验收脚本 → scripts/qa_acceptance.py | 已建 (权限/DB健康/ai-worker/MCP 冒烟+边界, PASS/FAIL 清单) |
+
+## 基准一致性 (QA 双向 md5 证实, 10/10) — 关闭
+## 待 QA 终验: 干净回归轮 (停止条件 3) — 本轮提交后 QA 跑 qa_acceptance.py 即可

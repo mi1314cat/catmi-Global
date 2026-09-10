@@ -362,14 +362,14 @@ async function initMcp() {
             for (const r of results) {
               const ru = (() => { try { return new URL(r.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
               const d = (r.publisher_domain || r.source || '').replace(/^www\./, '');
-              if (/^(news\.google\.com|bing\.com)$/.test(ru)) continue;   // [R4-P1-A] 与读取守卫同一判据 (url hostname)
-              if (seenUrl.has(r.canonical_url) || seenDom[d]) continue;
+              if (seenUrl.has(r.canonical_url) || seenDom[d]) continue;   // [R5-P0-A] 先去重再收 evidence
               seenUrl.add(r.canonical_url); seenDom[d] = 1;
               const s = sq(d) || {};
               evidence.push({ title: r.title, url: r.url, canonical_url: r.canonical_url, source: d,
                 source_id: r.source_id, published_at: r.published_at, published_at_source: r.published_at_source,
                 relevance: r.relevance_score, freshness: r.freshness_score, quality: r.source_quality_score,
                 official: r.official_score, tier: r.source_tier, snippet: (r.snippet || '').slice(0, 300), untrusted: true });
+              if (/^(news\.google\.com|bing\.com)$/.test(ru)) continue;   // [R5-P0-A] evidence 与可读性解耦: 仅排除出读取候选
               picked.push(r);
               if (picked.length >= k) break;
             }
@@ -390,10 +390,10 @@ async function initMcp() {
             rounds.push({ round, query: q, results: results.length, selected: picked.map((p) => p.source) });
             if (round === 1 && Date.now() - t0 < B.timeMs * 0.55) {
               gaps = [];
-              const t = (d) => (sq((d || '').replace(/^www\./, '')) || {}).tier;
-              if (!picked.some((p) => (p.official_score || 0) >= 0.5 || t(p.publisher_domain || p.source) === 'A')) gaps.push('missing_official');
-              if (picked.filter((p) => ['A', 'B'].includes(t(p.publisher_domain || p.source))).length < 2) gaps.push('missing_independent');
-              if (!picked.some((p) => p.published_at)) gaps.push('missing_recent');
+              
+              if (!evidence.some((p) => (p.official || 0) >= 0.5 || p.tier === 'A')) gaps.push('missing_official');
+              if (evidence.filter((p) => ['A', 'B'].includes(p.tier)).length < 2) gaps.push('missing_independent');
+              if (!evidence.some((p) => p.published_at)) gaps.push('missing_recent');
               if (!gaps.length) break;
               q = gaps.includes('missing_official') ? `${a.q} official statement site:gov OR who.int`
                 : gaps.includes('missing_recent') ? `${a.q} latest this week`

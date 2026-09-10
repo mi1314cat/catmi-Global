@@ -31,7 +31,7 @@ class Fetcher:
             headers={"User-Agent": config.UA,
                      "Accept": "text/html,application/xhtml+xml,application/xml,application/rss+xml,application/json;q=0.9,*/*;q=0.8",
                      "Accept-Language": "en"},
-            http2=True)
+            http2=False)   # [R6-P0-S2] StreamReset n=1063 → HTTP/1.1
         self._last_hit = {}          # host -> monotonic
 
     def close(self):

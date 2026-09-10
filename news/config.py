@@ -30,7 +30,8 @@ def get(key, default=""):
     return _env.get(key, os.environ.get(key, default))
 
 # --- 网络 ---
-UA = get("COLLECTOR_UA", "NewsResearchBot/0.1 (personal research; +https://myp.micsdic.dpdns.org)")
+# [R6-P0-S2] bot UA 被 NPR/NYT/MarketWatch 等 WAF 403 (crawl_errors 实证); 与 websearch 同一 Chrome UA 策略
+UA = get("COLLECTOR_UA", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 HTTP_TIMEOUT = float(get("HTTP_TIMEOUT", "20"))
 HTTP_RETRIES = int(get("HTTP_RETRIES", "3"))
 RETRY_DELAYS = (2.0, 5.0)                       # 指数退避前两级；落库重试用 crawl_tasks.next_attempt_at
@@ -40,6 +41,7 @@ MAX_ITEMS_PER_FEED = int(get("MAX_ITEMS_PER_FEED", "40"))
 # --- 采集节奏 ---
 SCAN_BATCH = int(get("SCAN_BATCH", "16"))       # 每轮 scan 处理的源数（cron 分片）
 FETCH_BATCH = int(get("FETCH_BATCH", "30"))     # 每轮正文抓取篇数
+SOURCE_BREAKER_ERRORS = int(get("SOURCE_BREAKER_ERRORS", "30"))  # 24h 内错误>=阈值 → 熔断该来源 [R6-P0-S2]
 IMAGE_BATCH = int(get("IMAGE_BATCH", "10"))
 IMAGES_ENABLED = get("IMAGES_ENABLED", "1") == "1"  # 0=不下载图片, 只保留 URL(省磁盘)
 SOURCE_DISABLE_AFTER = int(get("SOURCE_DISABLE_AFTER", "5"))  # 连续失败 N 次停用
