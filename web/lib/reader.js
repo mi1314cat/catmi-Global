@@ -11,7 +11,7 @@ const CWD = path.join(HOME, 'news-project');
 let running = 0;
 const queue = [];
 
-function exec(url, timeoutMs) {
+function exec(url, timeoutMs, maxChars) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; running--; resolve(v); } };
