@@ -40,8 +40,8 @@ MAX_ITEMS_PER_FEED = int(get("MAX_ITEMS_PER_FEED", "40"))
 
 # --- 采集节奏 ---
 SCAN_BATCH = int(get("SCAN_BATCH", "16"))       # 每轮 scan 处理的源数（cron 分片）
-# [R8-P1-S15 路线A] 吞吐算术: 60×6轮/h=360/h > 入库264/h (余量1.36×); 单轮~330s < */10 间隔无重叠
-FETCH_BATCH = int(get("FETCH_BATCH", "60"))     # 每轮正文抓取篇数
+# [R8-P1-S15 路线A] 80×6轮/h=480/h 排空 > 入库264/h; dupe~40% 后唯一内容 176/h > ~158/h
+FETCH_BATCH = int(get("FETCH_BATCH", "80"))   # dupe 实测 ~40%: 唯一内容吞吐 176/h > 唯一入库 ~158/h; 单轮 ~130s     # 每轮正文抓取篇数
 SOURCE_BREAKER_ERRORS = int(get("SOURCE_BREAKER_ERRORS", "30"))  # 24h 内错误>=阈值 → 熔断该来源 [R6-P0-S2]
 IMAGE_BATCH = int(get("IMAGE_BATCH", "10"))
 IMAGES_ENABLED = get("IMAGES_ENABLED", "1") == "1"  # 0=不下载图片, 只保留 URL(省磁盘)
