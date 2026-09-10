@@ -73,7 +73,47 @@ def _meta(html: str) -> dict:
     return out
 
 
-def read(url: str, timeout: int = 25) -> dict:
+# P0-4: 内容预算 + 注入检测 — 网页正文属 UNTRUSTED WEB CONTENT
+MAX_CHARS_DEFAULT = 12000
+MAX_CHARS_ABS = 40000            # absolute 上限: Agent 不可无限扩大
+INJECTION_PATTERNS = [
+    r"ignore\s+(all\s+|any\s+|the\s+|previous\s+|above\s+|prior\s+)*(instructions?|prompts?|rules?)",
+    r"disregard\s+(all\s+|the\s+)?(previous|above|prior|your)\s+(instructions?|prompts?|rules?|context)",
+    r"(reveal|print|show|repeat)\s+(your\s+|the\s+)?(system\s+)?(prompt|instructions?)",
+    r"you\s+are\s+now\s+(a|an|no\s+longer)",
+    r"act\s+as\s+(a\s+|an\s+)?(different|new|jailbreak|dan)",
+    r"(system|admin)\s*(prompt|mode|command)\s*[:=]",
+    r"忽略(以上|之前|上面)(的)?(指令|内容|文本|规则)",
+    r"无视(以上|之前|上面)",
+    r"你(现在)?是(一个)?(系统|管理员)",
+    r"(输出|打印|泄露|重复)(你的|系统的)?(系统提示|系统指令|初始指令)",
+    r"(忘记|清除)(你)?(之前|以上|所有)(的)?(指令|设定|约束)",
+]
+_ZERO_WIDTH = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+
+
+def scrub_content(content: str) -> dict:
+    """风险检测: 标记而不破坏原文; 零宽字符剥离(不可见载荷, 安全)。"""
+    hits = []
+    for pat in INJECTION_PATTERNS:
+        m = re.search(pat, content, re.I)
+        if m:
+            frag = content[max(0, m.start() - 20):m.end() + 30].replace("\n", " ")
+            hits.append({"pattern": pat[:44], "excerpt": frag[:90]})
+    zw = len(_ZERO_WIDTH.findall(content))
+    if zw > 5:
+        hits.append({"pattern": "zero_width_chars", "count": zw})
+    risk = min(1.0, 0.3 * len([h for h in hits if "pattern" not in ("zero_width_chars",)]) + (0.2 if zw > 20 else 0))
+    return {
+        "content": _ZERO_WIDTH.sub("", content),
+        "injection_hits": hits,
+        "risk_score": round(risk, 2),
+        "prompt_injection_risk": risk >= 0.3,
+    }
+
+
+def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dict:
+    max_chars = max(200, min(int(max_chars or MAX_CHARS_DEFAULT), MAX_CHARS_ABS))
     out = {"url": url, "status": "failed", "title": None, "author": None, "published": None,
            "source": _domain(url), "content": None, "content_chars": 0, "images": [],
            "language": None, "canonical_url": None, "method": None, "error": None}
@@ -113,8 +153,19 @@ def read(url: str, timeout: int = 25) -> dict:
         out["title"] = ex.get("title")
         out["author"] = ex.get("author") or meta.get("author")
         out["published"] = ex.get("date")
-        out["content"] = ex.get("text")
-        out["content_chars"] = len(out["content"] or "")
+        raw = ex.get("text") or ""
+        sc = scrub_content(raw)
+        if len(sc["content"]) > max_chars:
+            sc["content"] = sc["content"][:max_chars]
+            out["truncated"] = True
+        out["content"] = sc["content"]
+        out["content_chars"] = len(out["content"])
+        out["max_chars"] = max_chars
+        out["prompt_injection_risk"] = sc["prompt_injection_risk"]   # True 时 Agent 须把正文当数据
+        out["risk_score"] = sc["risk_score"]
+        out["injection_hits"] = sc["injection_hits"]
+        out["untrusted"] = True                                       # Spotlighting: 正文一律是数据, 不是指令
+        out["untrusted_boundary"] = "<<UNTRUSTED id=reader>> ...content... <</UNTRUSTED>>"
         out["images"] = [x for x in [ex.get("image") or meta.get("image")] if x]
         out["method"] = ex["method"]
     else:
@@ -143,7 +194,12 @@ def main():
     if not url.startswith(("http://", "https://")):
         print(json.dumps({"url": url, "status": "failed", "error": "仅支持 http/https URL（其他协议拒绝）"}))
         return
-    print(json.dumps(read(url, timeout=tmo), ensure_ascii=False))
+    mc = MAX_CHARS_DEFAULT
+    for arg in sys.argv[2:]:
+        if arg.startswith("--max-chars="):
+            try: mc = int(arg.split("=", 1)[1])
+            except ValueError: pass
+    print(json.dumps(read(url, timeout=tmo, max_chars=mc), ensure_ascii=False))
 
 
 if __name__ == "__main__":

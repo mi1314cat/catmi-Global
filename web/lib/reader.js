@@ -16,7 +16,7 @@ function exec(url, timeoutMs) {
     let done = false;
     const finish = (v) => { if (!done) { done = true; running--; resolve(v); } };
     running++;
-    const p = spawn(PY, ['-m', 'news.reader', url, `--timeout=${Math.round(timeoutMs / 1000) - 4}`],
+    const p = spawn(PY, ['-m', 'news.reader', url, `--timeout=${Math.round(timeoutMs / 1000) - 4}`, `--max-chars=${maxChars || 12000}`],
       { cwd: CWD, timeout: timeoutMs, killSignal: 'SIGKILL' });
     let buf = '';
     p.stdout.on('data', (c) => { buf += c; });
@@ -30,10 +30,11 @@ function exec(url, timeoutMs) {
   });
 }
 
-function readUrl(url, timeoutMs = 25000) {
+function readUrl(url, timeoutMs = 25000, maxChars = 12000) {
   if (!/^https?:\/\//.test(url)) return Promise.resolve({ url, status: 'failed', error: 'invalid url' });
-  if (running >= 2) return new Promise((res) => queue.push(() => exec(url, timeoutMs).then(res)));
-  return exec(url, timeoutMs);
+  maxChars = Math.max(200, Math.min(+maxChars || 12000, 40000));   // absolute 上限
+  if (running >= 2) return new Promise((res) => queue.push(() => exec(url, timeoutMs, maxChars).then(res)));
+  return exec(url, timeoutMs, maxChars);
 }
 
 module.exports = { readUrl };
