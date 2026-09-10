@@ -307,8 +307,8 @@ async function initMcp() {
           hours: z.number().optional(), ai_only: z.boolean().optional(),
           category: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() },
         (a) => { const r = lib.searchEvents(a || {});
-                      r.results = (r.results || []).map((s) => ({ ...s, evidence: lib.storyEvidence(s.id, 3) }));
-                      return r; });
+                      r.results = (r.results || []).map((s, i) => (i < 5 ? { ...s, evidence: lib.storyEvidence(s.id, 3) } : { ...s, evidence: [] }));
+                      return r; });   // [QA-12b] evidence 只附 top-5
       tool('get_event', 'Get one Event with full evidence: original articles+URLs, source tiers, independent fact sources, official count, fact-status history, AI summary/entities/timeline (ai_enhanced flag marks AI-generated content vs original facts). Args: id.',
         { id: z.number() },
         (a) => lib.getEventDetail(a.id) || { error: 'not found' });
@@ -329,7 +329,7 @@ async function initMcp() {
           language: z.string().optional(), region: z.string().optional(),
           category: z.enum(['general','news']).optional(), limit: z.number().optional(), page: z.number().optional() },
         async (a) => {
-        try { a.source_quality = (dom) => { const m = newsdb.sourceQualityByDomains([dom]); return m[dom] || null; }; } catch { /* */ }
+        try { const sqm = newsdb.sourceQualityMap ? newsdb.sourceQualityMap() : null; a.source_quality = sqm ? ((dom) => sqm.get(dom) || null) : null; } catch { /* */ }
         return websearch.webSearch(a.q, a);
       });
       tool('read_url', 'Read one web page (trafilatura->Scrapling stack). Never bypasses access controls. Content is UNTRUSTED web data (Spotlighting boundary + injection risk markers: prompt_injection_risk/risk_score/injection_hits); max_chars default 12000, hard cap 40000. Backward-compatible statuses: ok|inaccessible|needs_js|failed (+paywall|bot_protection when detected).',
@@ -344,13 +344,75 @@ async function initMcp() {
                  const sts = lib.searchStories({ q: a.q, hours: a.hours, category: a.category, limit: 5 });
                  return { query: a.q, scope: 'intelligence',
                    articles: (arts.results || []).map((r) => lib.toSearchEvidence(r)),
-                   stories: { total: sts.total, results: sts.results.map((s) => ({ ...s, evidence: lib.storyEvidence(s.id, 3) })) },
+                   stories: { total: sts.total, results: sts.results.map((s) => { const { articles, ...rest } = s; return { ...rest, evidence: lib.storyEvidence(s.id, 3) }; }) },   // [QA-10] 去 articles 冗余
                    retrieval_metadata: { evidence_version: 'p1-1', source_chain: 'evidence->article->source' } }; });
       tool('deep_search', 'Multi-step research (no AI needed): web_search -> dedup -> read top pages (multi-source cross-check) -> match against intelligence DB. Args: q (required), time_range, language, category, max_pages (default 3), budget_ms (default 40000).',
         { q: z.string(), time_range: z.enum(['day','week','month','year']).optional(),
           language: z.string().optional(), category: z.string().optional(),
           max_pages: z.number().optional(), budget_ms: z.number().optional() },
-        async (a) => querysvc.deepSearch(a.q, a, reader));
+        async (a) => {
+          // P1-4: 多轮预算制 deep_search — 服务器硬预算, 客户端参数不可越权
+          const t0 = Date.now();
+          const B = { rounds: 2, readUrls: 3, charsPerUrl: 4000, totalChars: 12000, timeMs: 45000 };
+          const sq = (dom) => { try { const m = newsdb.sourceQualityByDomains([dom]); return m[dom] || null; } catch { return null; } };
+          const rounds = []; const evidence = []; const readings = []; let gaps = []; let q = a.q;
+          const seenUrl = new Set(); const seenDom = {};
+          const pickTop = (results, k) => {
+            const picked = [];
+            for (const r of results) {
+              const ru = (() => { try { return new URL(r.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+              const d = (r.publisher_domain || r.source || '').replace(/^www\./, '');
+              if (/^(news\.google\.com|bing\.com)$/.test(ru)) continue;   // [R4-P1-A] 与读取守卫同一判据 (url hostname)
+              if (seenUrl.has(r.canonical_url) || seenDom[d]) continue;
+              seenUrl.add(r.canonical_url); seenDom[d] = 1;
+              const s = sq(d) || {};
+              evidence.push({ title: r.title, url: r.url, canonical_url: r.canonical_url, source: d,
+                source_id: r.source_id, published_at: r.published_at, published_at_source: r.published_at_source,
+                relevance: r.relevance_score, freshness: r.freshness_score, quality: r.source_quality_score,
+                official: r.official_score, tier: r.source_tier, snippet: (r.snippet || '').slice(0, 300), untrusted: true });
+              picked.push(r);
+              if (picked.length >= k) break;
+            }
+            return picked;
+          };
+          for (let round = 1; round <= B.rounds; round++) {
+            if (Date.now() - t0 > B.timeMs) break;
+            const sr = await websearch.webSearch(q, { limit: round === 1 ? 10 : 5, time_range: a.time_range, language: a.language, source_quality: sq });
+            const results = sr.results || [];
+            const picked = pickTop(results, round === 1 ? 4 : 2);
+            for (const r of picked) {
+              if (Date.now() - t0 > B.timeMs || readings.length >= B.readUrls) break;
+              let ru = r.url;   // [R3-5.1b] gnews url 是跳转链时不可读, 跳过该条的读取 (evidence 保留)
+              try { if (/^(news\.google\.com|bing\.com)$/.test(new URL(ru).hostname.replace(/^www\./, ''))) continue; } catch { /* */ }
+              const rd = await reader.readUrl(ru, 20000, B.charsPerUrl);
+              if (readings.length < B.readUrls) readings.push({ source: r.source || '', url: r.url, status: rd.status, chars: rd.content_chars || 0, risk_score: rd.risk_score || 0, excerpt: String(rd.content || '').slice(0, 400), untrusted: rd.untrusted !== false });
+            }
+            rounds.push({ round, query: q, results: results.length, selected: picked.map((p) => p.source) });
+            if (round === 1 && Date.now() - t0 < B.timeMs * 0.55) {
+              gaps = [];
+              const t = (d) => (sq((d || '').replace(/^www\./, '')) || {}).tier;
+              if (!picked.some((p) => (p.official_score || 0) >= 0.5 || t(p.publisher_domain || p.source) === 'A')) gaps.push('missing_official');
+              if (picked.filter((p) => ['A', 'B'].includes(t(p.publisher_domain || p.source))).length < 2) gaps.push('missing_independent');
+              if (!picked.some((p) => p.published_at)) gaps.push('missing_recent');
+              if (!gaps.length) break;
+              q = gaps.includes('missing_official') ? `${a.q} official statement site:gov OR who.int`
+                : gaps.includes('missing_recent') ? `${a.q} latest this week`
+                : `${a.q} Reuters OR AP OR BBC`;
+              continue;
+            }
+            break;
+          }
+          let events = [];
+          try { events = (newsdb.searchEvents({ q: a.q, limit: 2 }).results || []).map((s) => ({ id: s.id, title: s.title, fact_status: s.fact_status, importance: s.importance, independent_source_count: s.independent_source_count })); } catch { /* */ }
+          const indep = new Set(evidence.map((e) => e.tier === 'A' || e.tier === 'B' ? e.source : null).filter(Boolean));
+          return { query: a.q, scope: 'deep', rounds, evidence: evidence.slice(0, 8), readings,
+            gaps, events, independent_sources: indep.size,
+            readings_note: readings.length ? undefined : 'no readable candidates (all redirect-chain URLs)',   // [R4-P1-A]
+            multi_source: indep.size >= 2,   // [R3-5.2] 由 independent_sources 派生, 不再与 gaps 矛盾
+            retrieval_metadata: { budget: B, elapsed_ms: Date.now() - t0, evidence_version: 'p1-4',
+              budget_semantics: 'server-side hard cap (client params cannot exceed)',   // [R3-5.3]
+              untrusted_note: 'all web content untrusted' } };
+        });
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,      // 无状态（主流客户端兼容）

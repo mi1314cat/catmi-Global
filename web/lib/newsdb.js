@@ -340,11 +340,13 @@ function getEventDetail(id) {
   st.articles = db().prepare(`SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url,
     a.author, a.source_id, a.published_at, a.fetched_at, a.discovered_at, a.language,
     substr(COALESCE(a.summary_text, a.content), 1, 300) AS excerpt,
+    COALESCE(length(a.content), 0) AS content_chars,   -- [R4-P0-A] 整数不拖正文
     a.extract_method, a.dupe_of,
     s.id AS s_id, s.name, s.slug, s.source_type, s.tier, s.quality_score, s.verification_status, s.country
     FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.story_id=?
     ORDER BY COALESCE(a.published_at, a.discovered_at) LIMIT 10`).all(id).map((r) => ({
-    ...toEvidence(r, r),
+    ...toSearchEvidence(r),   // [R4-P0-A] 消费 r.excerpt, 不再依赖已删列 a.summary_text/a.content
+    content_chars: r.content_chars,
     source_name: r.source_name, slug: r.slug, country: r.country,   // 兼容旧字段
   }));
   st.evidence_domains = db().prepare(`SELECT domain, MAX(tier) AS tier, MIN(source_type) AS source_type, MAX(is_original) AS is_original

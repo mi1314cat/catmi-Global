@@ -3,6 +3,10 @@
 heat(story) = Σ_独立源 best(source.priority × exp(-age_h/30h))   仅统计窗口内
 importance: heat>=6 major | >=3 high | >=1.2 normal | else low"""
 import math
+from datetime import datetime, timedelta, timezone
+
+def _iso_ago(hours):
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 from . import config, db as dbm
 
@@ -45,8 +49,7 @@ def run(con, window_hours=24):
     con.commit()
     return {"recomputed": n, "window_hours": window_hours}
 
-from datetime import datetime, timedelta, timezone
-def _iso_ago(hours):
+
     return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def top(con, window_hours=24, category=None, limit=20):

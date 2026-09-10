@@ -75,3 +75,16 @@ R2-01=filtered 崩溃 / R2-02=getArticle SQL 注释 / R2-03=gnews 实体噪声 /
 
 ## 二次自查教训 (QA §7, 采纳并执行)
 R2 的 getEventDetail/trending.py 两项声明未实现 — 根因: replace 锚点不匹配静默 no-op。本轮起: ①补丁必须 grep 实际锚点后再写 ②claimed 文件清单与 git show --stat 差集必须为空方可标 FIXED ③同类修复成组扫描 (searchArticles 已改, getEventDetail 本轮补齐)。
+
+# QA Round 4 — 复验处置 (2026-09-09)
+
+| ID | 处置 | 线上/运行时证据 |
+|---|---|---|
+| R4-P0-A getEventDetail 字段回归 | toSearchEvidence + COALESCE(length(a.content),0) AS content_chars | get_event(174): [(1512,0,True),(7,4752,True),(431,4278,True),(590,0,True)...] — id7=4752 与 DB length(content)=4752 一致; content NULL 的文章诚实报 0; 10 条无截断, excerpt 恢复 |
+| R4-P1-A 两层判据不一致 | pickTop 改用 url hostname 判据 + readings_note 空说明 | "Ukraine drone strike Kyiv television": readings 3 条(原 0) — 读位利用率恢复; note 仅在 0 读取时出现 |
+| R4-P0-B python 证据存档 | 原始命令+输出附下 | CMD: trending.top(con, window_hours=48, limit=3) -> 3 rows; first: Ukrainian TV channel building hit by Russian drone CMD: trending.top(con, window_hours=72, limit=3) -> 3 rows; first: Ukrainian TV channel building hit by Russian drone  |
+| R4-P3-A/B | trending.py import 移顶部; search.py 统一 datetime.now(timezone.utc) | ast+导入通过 |
+| R4-P3-C | filtered 上限 8 vs window_dropped 原值: 设计如此, 已注释文档化 | — |
+| R4-§8 新验收纪律 | 采纳: 改 SELECT 列须查下游消费方(toEvidence 依赖 a.summary_text/a.content); 改过滤判据须多层一致 | 已写入本报告 |
+
+R4-P2-A(gnews 真实 URL)属功能扩展, 按项目边界不实施 (QA 同意)。P2/P3 剩余项仅记录。

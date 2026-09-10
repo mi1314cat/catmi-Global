@@ -360,8 +360,9 @@ async function initMcp() {
           const pickTop = (results, k) => {
             const picked = [];
             for (const r of results) {
+              const ru = (() => { try { return new URL(r.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
               const d = (r.publisher_domain || r.source || '').replace(/^www\./, '');
-              if (/^(news\.google\.com|bing\.com)$/.test(d)) continue;   // [R3-5.1] 跳转链不可读, 不占用 read 名额
+              if (/^(news\.google\.com|bing\.com)$/.test(ru)) continue;   // [R4-P1-A] 与读取守卫同一判据 (url hostname)
               if (seenUrl.has(r.canonical_url) || seenDom[d]) continue;
               seenUrl.add(r.canonical_url); seenDom[d] = 1;
               const s = sq(d) || {};
@@ -406,6 +407,7 @@ async function initMcp() {
           const indep = new Set(evidence.map((e) => e.tier === 'A' || e.tier === 'B' ? e.source : null).filter(Boolean));
           return { query: a.q, scope: 'deep', rounds, evidence: evidence.slice(0, 8), readings,
             gaps, events, independent_sources: indep.size,
+            readings_note: readings.length ? undefined : 'no readable candidates (all redirect-chain URLs)',   // [R4-P1-A]
             multi_source: indep.size >= 2,   // [R3-5.2] 由 independent_sources 派生, 不再与 gaps 矛盾
             retrieval_metadata: { budget: B, elapsed_ms: Date.now() - t0, evidence_version: 'p1-4',
               budget_semantics: 'server-side hard cap (client params cannot exceed)',   // [R3-5.3]
