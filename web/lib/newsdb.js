@@ -86,12 +86,9 @@ function searchArticles({ q, hours, category, source, language, sort, limit, off
        WHERE articles_fts MATCH ?${wsql} ${order} LIMIT ? OFFSET ?`
     ).all(fts, ...params, limit, offset);
     if (!rows.length) { // P1-2: AND 0 命中 → OR 重试 → 仍无才 LIKE 兜底
-      const orSql = String(n_total_select || '');
-      rows = db().prepare(
+      total = db().prepare(
         `SELECT COUNT(*) AS n FROM articles_fts f JOIN articles a ON a.id = f.rowid
-         JOIN sources s ON s.id = a.source_id WHERE articles_fts MATCH ?${wsql}`).get(ftsQuery(q, 'or'), ...params);
-      // 完整 OR 查询重跑 (rows + total)
-      total = rows.n;
+         JOIN sources s ON s.id = a.source_id WHERE articles_fts MATCH ?${wsql}`).get(ftsQuery(q, 'or'), ...params).n;
       rows = db().prepare(
         `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
               a.published_at, a.fetched_at, a.discovered_at, a.language, a.summary_text, a.content,
