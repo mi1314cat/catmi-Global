@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """news.search — Phase 1 基础检索: FTS5 全文 + 条件过滤 + story/热点查询"""
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import db as dbm
 
@@ -100,7 +100,7 @@ def latest(con, *, hours=None, category=None, limit=20, offset=0, include_purged
 
 def trending(con, *, hours=24, category=None, limit=20):
     # [R3-P0-B] hours=活跃度窗口 (与 JS 对齐); trending 表只存 24 批次
-    params = [(datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")]
+    params = [(datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")]
     wcat = ""
     if category: wcat = " AND st.category=?"; params.append(category)
     rows = con.execute(f"""SELECT t.score, t.computed_at, st.id AS story_id, st.title, st.summary,
