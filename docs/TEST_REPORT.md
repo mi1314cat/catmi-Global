@@ -1,71 +1,34 @@
-# TEST_REPORT — 验收测试报告（Phase 0-8 全量）
+# TEST_REPORT — 独立 QA 报告追踪（Developer 维护）
 
-> 测试时间: 2026-09-09 · 环境: s12.serv00.com 生产（非模拟）· 出口: 本地→HK 数据中心
-> 原则: 所有数字来自真实 HTTP/SSH 执行记录; AI 全程零参与（零 API 调用, 系统 AI-free 验证成立）
+> QA 来源: 独立测试 Agent (工作区审计 + MCP 黑盒)。Developer 逐项验证后修复; 修复后由 QA 复验。
+> 修复批次: 2026-09-09 Stabilization Round 1 (commit 见 git log)
 
-## 1. 采集管道（Phase 1-3）
+| ID | Sev | Component | 问题 | 根因 | 修复 | 状态/回归 |
+|---|---|---|---|---|---|---|
+| QA-1 | High | websearch.js bingNewsRss | &amp; 未解码→解包静默失败→domain_cap 误杀 9 条/deep_search 读假页 | URL 参数名变 amp;url | item-slice 重写: 先解码实体再解包 url=/u=, publisher_domain/canonical_url 回填, description→snippet | ✅ FIXED: bingnews 2条真实域名(pna.gov.ph/irishtimes.com)+snippet 非空 |
+| QA-2 | Med | websearch.js fetchText | 重定向环无深度上限 | 递归无 depth | depth>5 拒绝 | ✅ FIXED |
+| QA-3 | Med | websearch.js gnewsRss | snippet 全空 | 未读 description | item 内提取 description→snippet | ✅ FIXED |
+| QA-4 | High | newsdb.js trending | hours 参数完全失效(当主键匹配) | window_hours=? | window_hours=24 固定 + st.last_updated>=isoAgo(hours) | ✅ FIXED: hours=48 返回 3 条 |
+| QA-5 | High | newsdb.js searchEvents | source_count=文章数(52)覆盖真实独立来源(18) | COUNT(*) | COUNT(DISTINCT source_id) | ✅ FIXED: 11(=DISTINCT) |
+| QA-6 | High | reader.js | 并发≥3 永久 pending | queue 只 push 不排空 | finish() 补 queue.shift() drain | ✅ FIXED (未在 QA 清单验证细节, 代码级修复) |
+| QA-7 | High | reader.py | consent/redirect 页判 ok | 只看提取成功 | 内容门禁 <400字或 INTERSTITIAL 特征→needs_js | ✅ FIXED: google.com→needs_js (曾因门禁插错位置致 UnboundLocalError, 已修) |
+| QA-8 | High | reader.py infer_published | body_regex 从任意正文臆造日期 | 正则兜底 | 移除 body_regex 层 | ✅ FIXED |
+| QA-9 | High | newsdb.js getEventDetail/getStory | SELECT * 带 fingerprint→get_event 29KB 溢出 | SELECT * | 字段白名单 | ✅ FIXED: 8.4KB 无 fingerprint |
+| QA-10 | Med | newsdb.js searchEvents cnt | COUNT(*) 错误来源计数 | 同 QA-5 | 同上 | ✅ FIXED |
+| QA-11 | Med | newsdb.js/app.js | search_intelligence 三重冗余 | stories 带 articles | handler 解构剥离 articles | ✅ FIXED |
+| QA-12 | Med | app.js search_events | 50 事件各查 evidence | 无上限 | evidence 只附 top-5 | ✅ FIXED |
+| QA-13 | Med | websearch.js region | region 键名不一致→ddg 恒默认 | opts.region_ddg | 兼容 opts.region | ✅ FIXED |
+| QA-14 | High | rerank | time_range 静默失效 | provider 不支持 | 硬过滤 out_of_window→filtered | ✅ FIXED: week 窗口内 100% |
+| QA-15 | Med | websearch.js | 聚合站(msn/bing/gnews跳转)压过通讯社 | quality 权重 0.2+未知域0.4 | quality 0.3/rel 0.35 + AGG 域降权 0.15-0.05 | ✅ FIXED: deep_search 前二无聚合站 |
+| QA-16 | Med | intent | 中文词表太窄全落 GENERAL | 正则只覆盖部分词 | EVENT/OFFICIAL/NEWS 词表扩充 | ✅ FIXED: 乌克兰无人机袭击基辅→EVENT |
+| QA-17 | Perf | sourceQualityByDomains | N+1 每请求 160-240 次 LIKE | 每域 2 次扫描 | sourceQualityMap 模块级缓存 + resolver 直用 | ✅ FIXED |
+| QA-18 | Perf | searchArticles | 列表拖全文 content | SELECT a.content | substr excerpt 500 | ✅ FIXED (FTS/OR 分支) |
+| QA-19 | Perf | images | local_path 泄露服务器路径 | SELECT 带列 | getArticle SELECT 去列 | ✅ FIXED |
+| QA-20 | Perf | webSearch providers | latency 全相同 | forEach 内取时刻 | promise 完成时刻记录 t | ✅ FIXED |
+| QA-21 | Perf | reader.js fetchText | 3MB/请求×6 provider | 缓冲上限 | 默认 1MB (maxBytes 参数化) | ✅ FIXED |
+| QA-22 | High | search.py | hours OR 条件无括号, 过滤被绕过 | AND 优先级 | 整条加括号 | ✅ FIXED (Python 工具链路径) |
+| DEFER-1 | Perf | app.js MCP server | 每请求重建 server+12 zod schema | mcpHandler 内构造 | 暂缓: 结构性重构有破坏 MCP 风险, 需独立验证窗口 | ⏸ DEFERRED |
+| NOTE-1 | Info | query.js | deepSearch 旧路径未被调用(P1-4 在 app.js inline) | 实现位置 | 非版本漂移(md5 一致); 记录待后续清理 | 📄 DOCUMENTED |
+| NOTE-2 | Info | unranked_first3 | 非黑洞, 是重排前快照(设计如此) | — | QA 自行更正; 保留 | 📄 DOCUMENTED |
 
-| 项 | 结果 | 证据 |
-|---|---|---|
-| 49 源注册 | ✅ inserted 21 + updated 28 = 49, 0 错误 | seed-sources JSON 输出 |
-| 多类型扫描 | ✅ rss/gnews/sitemap/api 全通: 583 新/445 重/6 错, 20s | p3full.out |
-| 正文提取 | ✅ 25/25 done (trafilatura), 30s; 29+1/30 done 第二批 | fetch JSON |
-| 图片下载 | ✅ 12/12 (HEAD 预检+≥3KB), og 图 62KB 落盘 | images JSON + /api/images/1 200 |
-| 去重 | ✅ canonical_url + content_hash 双通道; 同源标题 Jaccard≥0.9/48h | dupe 计数 36/445 |
-| 事件聚类 v2 | ✅ 每批 300 篇归并 52→74→**119**（跨源锚点: Canada×5 检索命中; e:canada/e:trump 指纹可见） | stories_fts MATCH |
-| Trending | ✅ 429 事件重算; top: PISA(3源3篇)/俄朝大桥(3源) heat 1.92/1.24 | trending JSON |
-| 视频元数据 | ✅ YouTube×3 + B站热门 meta_only 入库（不落地媒体流） | per-source items |
-| 断点队列 | ✅ 1097 pending 任务状态机; 失败 0; 退避 1h/4h/12h | crawl_tasks |
-
-## 2. 服务层（Phase 4-5）
-
-| 端点 | 实测 |
-|---|---|
-| GET /api/health | 200 {articles:1163, stories:248, sources:52, disk:normal} |
-| GET /api/news?q=tariff | 200 FTS+snippet; /api/news/latest 分页 {total,limit,offset} |
-| GET /api/news/35 | 200 全文+作者(Maya Yang)+canonical |
-| GET /api/stories?q=Canada | 200 total=5（聚类生效）; /api/stories/:id timeline[] |
-| GET /api/trending | 200 heat 排序 |
-| GET /api/sources /categories | 200 52 源 / 类别计数 |
-| GET /api/images/1 | 200 image/jpeg 62191B（路径遍历防护已做） |
-| 未知端点 | 404 JSON + hint |
-| MCP initialize | 200 protocolVersion 2025-06-18, serverInfo 正确 |
-| MCP tools/list | 200 8 工具全 schema |
-| MCP tools/call get_trending / search_news | 200 真实数据（PISA 1.924 / tariff 检索） |
-| MCP 错误 token / 无认证 | 401 ×(10/10) + WWW-Authenticate |
-| Origin 伪造 | 403 origin rejected |
-
-## 3. 压力测试（Phase 8, 生产环境实测）
-
-**python3 tests/stress_api.py**（浏览器 UA——Python 默认 UA 被 serv00 前端 WAF 拦 403, 已记录为平台行为）:
-
-| 场景 | n | 结果 |
-|---|---|---|
-| 顺序基线 10× | 10 | 10× 200, p50 116ms, max 312ms（含 Passenger 冷启动 5.4s → 重生实测） |
-| **正常负载 90×并发5** | 90 | **90× 200, p50 416ms, p95 1031ms, max 1526ms, 0 错误** |
-| **突发 150×并发20** | 150 | 20× 200 + **130× 429**（限速器 120/min 精准生效） |
-| MCP tools/call 40×并发5 | 40 | **40× 200, p50 411ms, max 483ms, 0 错误** |
-| MCP 无认证 10× | 10 | 10× 401 |
-
-## 4. 韧性/自动化（Phase 7-8）
-
-| 项 | 结果 | 证据 |
-|---|---|---|
-| Passenger kill→重生 | ✅ kill 后首请求 200 | ssh kill + curl |
-| cron 自动触发 | ✅ 06:10 槽位执行（首跑暴露 run 参数 bug→已修复→手动 run 全链成功 33s） | cron.log + manual-run.out |
-| 管道单轮耗时 | ✅ 33s（scan 10 源+fetch 12+images 8+cluster 300+trending 429） | run JSON |
-| lockf 防重 | ✅ /tmp/news-run.lock | crontab |
-| 备份 | ✅ 机制就绪（04:10 每日, 保留 7 份） | backup API 实现于 newsctl |
-| 磁盘水位 | ✅ normal 130M/3G（4.3%）; 四档门已实现 | monitor_level |
-| 72h 滚动 | ✅ purge_content/images/raw 已实现并在 cleanup 链 | retention.py |
-| doctor | ✅ quick_check/FTS 漂移/卡死任务/WAL 检查 | newsctl doctor |
-
-## 5. AI-free 验证
-全链（采集→提取→聚类→检索→API→MCP→UI）在**零 LLM API 调用**下完成与验收——AI Provider 仅是 env.local 可选插件（未配置时系统满功能）。
-
-## 6. 已知边界（诚实记录）
-1. 聚类扫描 300/轮: 1162 篇积压需数轮追平（cron 10min 节奏 4 轮内完成）; 同窗跨源合并依赖锚点共现
-2. GDELT doc API 对数据中心 IP 429×5（已记录, Phase 6+ 可选 lastupdate 路线）
-3. ecb/arxiv/vimeo 3 源 0-item 系 limit 49 截断（非故障, 下一轮次自然进入）
-4. Python-urllib UA 被 serv00 前端 WAF 403——API 客户端需自设浏览器 UA（记录于部署手册）
-5. 深夜抓取积压批次 fetch 25/轮 → 大新流量时追平需 ~7h（可调 FETCH_BATCH）
+回归证据: 2026-09-09 MCP 实测 (bingnews 真实域名+snippet / trending hours=48 生效 / get_event 8.4KB 无 fingerprint / source_count=DISTINCT / consent→needs_js / 中文 intent→EVENT / deep_search 聚合站降权)。
