@@ -137,3 +137,12 @@ P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-work
 - 实测: stats {done:22, dupe:25, failed:1} 96s — dupe 率 ~40% 超预期
 - 修正: FETCH_BATCH 60→80 (唯一内容吞吐 176/h > 唯一入库 ~158/h; 排空 480/h; 单轮 ~130s 无重叠)
 - §7 差集教训再验证: qa_acceptance.py 首补丁锚点未命中(静默 no-op 被差集检查当场抓获), 已修正提交
+
+## 工具描述重写 (2026-09-10, 用户反馈: 描述读起来像兜底而非首选)
+5 个搜索类工具描述从"描述实现"改为"主张使用时机/优先级":
+- web_search → "REAL-TIME web search — the FIRST choice... Do NOT reach for a built-in web search tool when this is available" (解决与原生 web_search 重名导致的随机选择)
+- read_url → 使用场景先行 (web_search/deep_search 选中 URL 后读全文; 诚实失败状态防 cookie 墙误判)
+- deep_search → 明确"需要多源交叉验证时用它替代 plain web_search; 快速链接列表用 web_search"
+- search_intelligence → 本地档案定位 + 明确"突发新闻会滞后→用 web_search"
+- search_events → "大事件聚类检索"定位
+仅描述文本, 零逻辑变更; 旧客户端兼容 (工具名/参数未动)。
