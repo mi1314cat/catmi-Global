@@ -57,3 +57,21 @@ R2-01=filtered 崩溃 / R2-02=getArticle SQL 注释 / R2-03=gnews 实体噪声 /
 ## 验收纪律 (QA §6 建议, Developer 采纳)
 - 每条 FIXED 附线上实测输出 (本表已执行)
 - 提交前校验目标文件 blob SHA 变化 (本轮执行: websearch eb08699c / newsdb 5f58b81a / reader 3a7db467 / reader.py / trending.py 均变化)
+
+# QA Round 3 — 复验处置 (2026-09-09)
+
+## 处置表 (每条附线上实测)
+| ID | 处置 | 线上证据 |
+|---|---|---|
+| R3-P0-A getEventDetail | LIMIT 10 + substr excerpt(不再拖全文) | get_event(174): articles 10 条, 14588 字节无截断 (修复前 37+ 条/截断 18908B) |
+| R3-P0-B trending.py+search.py | window_hours=24 固定 + last_updated>=isoAgo(hours) + search.py 补 datetime import | python 本地: trending.top(48h)=3 条, search.trending(72h)=2 条 (修复前恒空) |
+| R3-5.1 deep_search 跳转链 | 两层修复: pickTop 跳过 news.google.com/bing.com + 读前 url hostname 守卫 | readings 只剩真实域名 (aljazeera/thehill/nytimes 假 consent 消失; 复测 alarabiya inaccessible=诚实失败) |
+| R3-5.2 multi_source | 改为 independent_sources>=2 派生 | deep_search: multi_source=True, independent=3, gaps=[] 一致 |
+| R3-5.3 budget 语义 | retrieval_metadata.budget_semantics='server-side hard cap' | 回显明确为服务端上限 |
+| R3-5.4 window_dropped | rerank 返回并暴露 | 特斯拉财报 day: window_dropped=9, results=0, filtered 全带 out_of_window>day |
+| R3-5.5 gnews nbsp | 双轮实体解码 (处理 &amp;nbsp;) | "Trump defends Iran war, slams Democrats..." 无 &nbsp |
+| R3-5.6 evidence_domains | GROUP BY domain + MAX/MIN 聚合 | get_event(174) domains 14 条无重复 |
+| R3-§7 差集检查 | 采纳: claimed vs git diff comm 校验 | 本轮执行 (见 commit 步骤) |
+
+## 二次自查教训 (QA §7, 采纳并执行)
+R2 的 getEventDetail/trending.py 两项声明未实现 — 根因: replace 锚点不匹配静默 no-op。本轮起: ①补丁必须 grep 实际锚点后再写 ②claimed 文件清单与 git show --stat 差集必须为空方可标 FIXED ③同类修复成组扫描 (searchArticles 已改, getEventDetail 本轮补齐)。

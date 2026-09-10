@@ -45,12 +45,17 @@ def run(con, window_hours=24):
     con.commit()
     return {"recomputed": n, "window_hours": window_hours}
 
+from datetime import datetime, timedelta, timezone
+def _iso_ago(hours):
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 def top(con, window_hours=24, category=None, limit=20):
-    params = [window_hours]
+    # [R3-P0-B] window_hours=活跃度窗口 (与 JS newsdb.trending 对齐); trending 表只存 24 批次
+    params = [_iso_ago(window_hours)]
     wcat = ""
     if category:
         wcat = " AND st.category=?"; params.append(category)
     return [dict(r) for r in con.execute(f"""SELECT t.score, st.id AS story_id, st.title, st.importance,
                st.category, st.article_count, st.source_count, st.first_seen, st.last_updated, st.entities,
                st.locations FROM trending t JOIN stories st ON st.id=t.story_id
-               WHERE t.window_hours=? {wcat} ORDER BY t.score DESC LIMIT ?""", params + [limit])]
+               WHERE t.window_hours=24 AND st.last_updated>=? {wcat} ORDER BY t.score DESC LIMIT ?""", params + [limit])]

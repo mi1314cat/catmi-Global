@@ -339,15 +339,16 @@ function getEventDetail(id) {
   if (!st) return null;
   st.articles = db().prepare(`SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url,
     a.author, a.source_id, a.published_at, a.fetched_at, a.discovered_at, a.language,
-    a.summary_text, a.content, a.extract_method, a.dupe_of,
+    substr(COALESCE(a.summary_text, a.content), 1, 300) AS excerpt,
+    a.extract_method, a.dupe_of,
     s.id AS s_id, s.name, s.slug, s.source_type, s.tier, s.quality_score, s.verification_status, s.country
     FROM articles a JOIN sources s ON s.id=a.source_id WHERE a.story_id=?
-    ORDER BY COALESCE(a.published_at, a.discovered_at)`).all(id).map((r) => ({
+    ORDER BY COALESCE(a.published_at, a.discovered_at) LIMIT 10`).all(id).map((r) => ({
     ...toEvidence(r, r),
     source_name: r.source_name, slug: r.slug, country: r.country,   // 兼容旧字段
   }));
-  st.evidence_domains = db().prepare(`SELECT DISTINCT domain, tier, source_type, is_original
-    FROM event_evidence WHERE story_id=? AND is_original=1`).all(id);
+  st.evidence_domains = db().prepare(`SELECT domain, MAX(tier) AS tier, MIN(source_type) AS source_type, MAX(is_original) AS is_original
+    FROM event_evidence WHERE story_id=? AND is_original=1 GROUP BY domain`).all(id);
   st.official_source_count = db().prepare(`SELECT COUNT(DISTINCT e.domain) FROM event_evidence e
     WHERE e.story_id=? AND e.tier='A' AND e.is_original=1`).get(id).n;
   st.fact_history = db().prepare(`SELECT fact_status, reason, at FROM story_fact_history

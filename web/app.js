@@ -361,6 +361,7 @@ async function initMcp() {
             const picked = [];
             for (const r of results) {
               const d = (r.publisher_domain || r.source || '').replace(/^www\./, '');
+              if (/^(news\.google\.com|bing\.com)$/.test(d)) continue;   // [R3-5.1] 跳转链不可读, 不占用 read 名额
               if (seenUrl.has(r.canonical_url) || seenDom[d]) continue;
               seenUrl.add(r.canonical_url); seenDom[d] = 1;
               const s = sq(d) || {};
@@ -380,7 +381,9 @@ async function initMcp() {
             const picked = pickTop(results, round === 1 ? 4 : 2);
             for (const r of picked) {
               if (Date.now() - t0 > B.timeMs || readings.length >= B.readUrls) break;
-              const rd = await reader.readUrl(r.url, 20000, B.charsPerUrl);
+              let ru = r.url;   // [R3-5.1b] gnews url 是跳转链时不可读, 跳过该条的读取 (evidence 保留)
+              try { if (/^(news\.google\.com|bing\.com)$/.test(new URL(ru).hostname.replace(/^www\./, ''))) continue; } catch { /* */ }
+              const rd = await reader.readUrl(ru, 20000, B.charsPerUrl);
               if (readings.length < B.readUrls) readings.push({ source: r.source || '', url: r.url, status: rd.status, chars: rd.content_chars || 0, risk_score: rd.risk_score || 0, excerpt: String(rd.content || '').slice(0, 400), untrusted: rd.untrusted !== false });
             }
             rounds.push({ round, query: q, results: results.length, selected: picked.map((p) => p.source) });
@@ -402,9 +405,11 @@ async function initMcp() {
           try { events = (newsdb.searchEvents({ q: a.q, limit: 2 }).results || []).map((s) => ({ id: s.id, title: s.title, fact_status: s.fact_status, importance: s.importance, independent_source_count: s.independent_source_count })); } catch { /* */ }
           const indep = new Set(evidence.map((e) => e.tier === 'A' || e.tier === 'B' ? e.source : null).filter(Boolean));
           return { query: a.q, scope: 'deep', rounds, evidence: evidence.slice(0, 8), readings,
-            gaps, events, multi_source: new Set(evidence.map((e) => e.source)).size >= 2,
-            independent_sources: indep.size,
-            retrieval_metadata: { budget: B, elapsed_ms: Date.now() - t0, evidence_version: 'p1-4', untrusted_note: 'all web content untrusted' } };
+            gaps, events, independent_sources: indep.size,
+            multi_source: indep.size >= 2,   // [R3-5.2] 由 independent_sources 派生, 不再与 gaps 矛盾
+            retrieval_metadata: { budget: B, elapsed_ms: Date.now() - t0, evidence_version: 'p1-4',
+              budget_semantics: 'server-side hard cap (client params cannot exceed)',   // [R3-5.3]
+              untrusted_note: 'all web content untrusted' } };
         });
 
       const transport = new StreamableHTTPServerTransport({

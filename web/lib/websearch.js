@@ -197,10 +197,10 @@ async function gnewsRss(q, opts) {
     const pm = it.match(pf); if (!pm) continue;
     const gm = it.match(gf);
     const title = tm[1].replace(/\s+-\s+[^-]{2,40}$/, '').trim();
-    // [R2-03] gnews description 是实体转义的 HTML: 先解实体再剥标签, 否则 snippet=噪声且污染打分
-    const snip = gm ? gm[1]
-      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-      .replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+    // [R2-03][R3-5.5] gnews description 双重转义 (&amp;nbsp;): 两轮解码再剥标签
+    const dec = (t) => t
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+    const snip = gm ? dec(dec(gm[1])).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200) : '';
     // 真实出版方域名来自 <source url=""> (gnews 链接本身是重定向)
     const sm = it.match(sf);
     const pubUrl = sm ? sm[1] : '';
@@ -358,7 +358,7 @@ function rerank(items, query, opts) {
     (cnt[d] <= cap ? main : filtered2).push(it);
     if (cnt[d] > cap) it.filtered_reason = `domain_cap:${d}`;
   }
-  return { main, filtered: outWin.concat(filtered2) };   // [R2-01]
+  return { main, filtered: outWin.concat(filtered2), window_dropped: outWin.length };
 }
 
 // ---------- 统一入口 ----------
@@ -404,7 +404,7 @@ async function webSearch(query, opts = {}) {
   }
   items = dedup(items);
   const unranked = items.slice();                          // 旧顺序(诊断对比用)
-  const { main, filtered } = rerank(items, query, opts);
+  const { main, filtered, window_dropped } = rerank(items, query, opts);
   items = main.slice(0, limit);
   return {
     query, scope: 'web', limit, page,
@@ -412,7 +412,8 @@ async function webSearch(query, opts = {}) {
     elapsed_ms: Date.now() - t0,
     providers,
     results: items,
-    filtered: filtered.slice(0, 8),            // 被多样性截断的结果(带 filtered_reason) 保留 debug
+    filtered: filtered.slice(0, 8),            // 被多样性截断/越窗的结果(带 filtered_reason) 保留 debug
+    window_dropped: window_dropped || 0,       // [R3-5.4] 区分「无结果」与「全部越窗」
     unranked_first3: unranked.slice(0, 3).map((x) => x.source + '|' + (x.title || '').slice(0, 40)),  // 旧顺序对照
   };
 }
