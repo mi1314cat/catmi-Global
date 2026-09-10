@@ -18,3 +18,9 @@
 ## 已知限制 (接受)
 - _sqMap 缓存无 TTL: 管理员改 sources 后需重启进程生效
 - time_range 硬过滤: 无日期条目保留 (published_at=null 诚实暴露)
+
+## 追加 (QA R7)
+| ID | 级别 | 项目 | 接受理由 |
+|---|---|---|---|
+| P3-S13 | P3 | ~/news-lab 仍 755 (开发脚本 35M, 无生产数据) | 非生产数据; 生产目录已全部 700/600 |
+| P3-S14 | P3 | qa_acceptance.py 依赖 sshpass(Windows 不可直接跑) | QA 侧有 paramiko 等价实现; 服务器验收以本脚本为准 |

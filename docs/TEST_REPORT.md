@@ -102,3 +102,23 @@ R4-P2-A(gnews 真实 URL)属功能扩展, 按项目边界不实施 (QA 同意)�
 
 ## 基准一致性 (QA 双向 md5 证实, 10/10) — 关闭
 ## 待 QA 终验: 干净回归轮 (停止条件 3) — 本轮提交后 QA 跑 qa_acceptance.py 即可
+
+# QA Round 7 — 凭据泄露事故处置 (2026-09-10)
+
+## P0-S11 (我引入的安全事故, 如实记录)
+- e2ac4ee 的 scripts/qa_acceptance.py 硬编码 MCP token + admin 口令并推入公开仓库 (raw 200 无鉴权可读)。
+- **轮换补救 (已执行, 历史不改写)**:
+  1. MCP token: env.local MCP_TOKEN 换新 (openssl rand -hex 32) + node 重启 → 新 token tools/list OK, 旧 token unauthorized ✓
+  2. admin 口令: scrypt$16384$8$1$<salt>$<hash> 重写 auth.db users + DELETE sessions → 新口令 HTTP 登录 OK ✓
+     (过程教训: 首次经远程 shell 传 hash 被 \$ 展开损坏成 scrypt6384$..., 新旧口令全失效; 改 scp 文件方式 node 校验 verify=true 后恢复)
+  3. 新凭据存 /root/deepseek1/serve00-catmi/.secrets.local (600, 不入库); 已在会话中移交用户
+  4. SSH 口令轮换属用户操作项 (serv00 账号层面), Developer 无法代持 — 已列移交
+- 防复发: scripts/secret_scan.py (6 类模式) + .github/workflows/secret-scan.yml (push/PR) — 当前 scan 0 命中
+- qa_acceptance.py 重写: 凭据全走 env (QA_MCP_TOKEN/QA_ADMIN_PW/SSHPASS+sshpass -e), HEAD 无任何秘密
+
+## P3-S12 验收脚本两缺陷 — 已修
+1. S2 检查: datetime('now') 与 ISO 'T' 格式比较恒真 → strftime('%Y-%m-%dT%H:%M:%SZ','now','-3 hours'), 断言 >=1
+2. ai-worker 步骤由执行脚本 (有写库+LLM 调用) 改为只读静态检查 (grep cd "$PROJ" 行)
+
+## R7 其余复核 — 全部确认
+P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-worker 无 traceback, evidence 8/readings 3, 权限 700/600)。
