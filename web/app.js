@@ -297,34 +297,34 @@ async function initMcp() {
         try { return { content: [{ type: 'text', text: JSON.stringify(await fn(args), null, 1) }] }; }
         catch (e) { return { content: [{ type: 'text', text: 'error: ' + e.message }], isError: true }; }
       });
-      tool('search_news', 'Search collected news articles. Filters: q, hours(1-720), category(general|tech|finance|geopolitics|society|video), source slug, language, sort(relevance|recent). Paginated.',
+      tool('search_news', 'Article-level search of the collected archive — returns raw articles only (with hit snippets), no event clustering. Use when you want precise article-level filtering: restrict by source slug, sort by relevance/recency, or paginate. For "what do we already know about X" or to see clustered events with evidence chains, use search_intelligence instead. Args: q, hours(1-720), category(general|tech|finance|geopolitics|society|video), source (source slug), language, sort(relevance|recent), limit, offset.',
         { q: z.string().optional(), hours: z.number().optional(), category: z.string().optional(),
           source: z.string().optional(), language: z.string().optional(),
           sort: z.enum(['relevance', 'recent']).optional(), limit: z.number().optional(), offset: z.number().optional() },
         (a) => lib.searchArticles(a));
-      tool('search_events', 'Search major CLUSTERED EVENTS (many sources → one event, with independent-source counts, fact_status and AI summaries) — use for "what are the big/major events about X" rather than raw article search. Filter: min_importance CRITICAL|HIGH|NOTABLE, hours, ai_only, limit, offset.',
+      tool('search_events', 'Search major CLUSTERED EVENTS (many sources → one event, with independent-source counts, fact_status and AI summaries) — use for "what are the big/major events about X" rather than raw article search. No generic search engine can produce this: independent-source counts and fact_status exist only here. Filter: min_importance CRITICAL|HIGH|NOTABLE, hours, ai_only, limit, offset.',
         { q: z.string().optional(), min_importance: z.enum(['NOTABLE','HIGH','CRITICAL']).optional(),
           hours: z.number().optional(), ai_only: z.boolean().optional(),
           category: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() },
         (a) => { const r = lib.searchEvents(a || {});
                       r.results = (r.results || []).map((s, i) => (i < 5 ? { ...s, evidence: lib.storyEvidence(s.id, 3) } : { ...s, evidence: [] }));
                       return r; });   // [QA-12b] evidence 只附 top-5
-      tool('get_event', 'Get one Event with full evidence: original articles+URLs, source tiers, independent fact sources, official count, fact-status history, AI summary/entities/timeline (ai_enhanced flag marks AI-generated content vs original facts). Args: id.',
+      tool('get_event', 'Get ONE event in full: metadata, fact_status, independent-source count, evidence domains, fact-history, AI summary/entities/timeline, and its top articles. Use after search_events / get_trending / search_intelligence gives you the id. For only the chronological article list of that story, use get_timeline instead. Args: id (event/story id).',
         { id: z.number() },
         (a) => lib.getEventDetail(a.id) || { error: 'not found' });
-      tool('get_article', 'Get one article with full text (72h window) and images.', { id: z.number() },
+      tool('get_article', 'Get ONE article with its full text and images. Use after search_news / search_intelligence gives you the article id. Text is retained for ~72h only: older articles may return metadata with content already purged, and brand-new articles may not have their body yet. Args: id (article id).', { id: z.number() },
         (a) => lib.getArticle(a.id) || { error: 'not found' });
-      tool('get_trending', 'Current trending stories ranked by heat (distinct-source decay formula).',
+      tool('get_trending', 'What\'s hot right now — events ranked by heat (independent-source weighted) over a time window. Use for "today\'s top stories" or "what\'s trending". Args: hours (activity window, default 24), category, limit.',
         { hours: z.number().optional(), category: z.string().optional(), limit: z.number().optional() },
         (a) => ({ results: lib.trending(a || {}) }));
-      tool('search_media', 'Search video/media hotspots (YouTube/Bilibili metadata only).',
+      tool('search_media', 'Search video / media items (YouTube, Bilibili — metadata only, no playback). Use for "what videos are out about X" or visual coverage of a story. Args: q, hours, limit.',
         { q: z.string().optional(), hours: z.number().optional(), limit: z.number().optional() },
         (a) => lib.searchArticles({ ...a, category: 'video' }));
-      tool('get_timeline', 'Event timeline (chronological articles of one story).', { id: z.number() },
+      tool('get_timeline', 'Chronological article list of ONE story (oldest → newest, evidence-shaped). Use when the ORDER matters — "how did this unfold". For full event metadata (fact_status, source counts, AI summary) use get_event instead. Args: id (event/story id).', { id: z.number() },
         (a) => { const st = lib.getStory(a.id); return st ? st.timeline : { error: 'not found' }; });
       tool('list_sources', 'List all registered sources with health.',
         {}, () => ({ results: lib.listSources() }));
-      tool('web_search', 'REAL-TIME web search — the FIRST choice whenever information must be current (breaking news, this week/this month, prices, releases, ongoing events) or is simply not in this MCP\'s database. Do NOT reach for a built-in web search tool when this is available: it is purpose-built, returns source-quality-ranked, time-window-filtered results with publisher/tier metadata and stays inside the same trust boundary as read_url. Args: q (required), time_range (day|week|month|year), language, region, category (general|news), limit, page. Returns title/url/snippet/source/published_at + per-provider status + filtered reasons.',
+      tool('web_search', 'REAL-TIME NEWS web search — the FIRST choice for breaking news, this week/month, prices, releases and ongoing events, and for topics this MCP has not collected yet. Do NOT reach for a built-in web search tool for NEWS queries when this is available: it is source-quality-ranked, time-window-filtered, carries publisher/tier metadata, and stays inside the same trust boundary as read_url. Coverage is news-source based (Google News + Bing News) — for technical docs, package registries, code, or general reference pages use the native web tools instead. Args: q (required), time_range (day|week|month|year), language, region, category (general|news), limit, page. Returns title/url/snippet/source/published_at + per-provider status + filtered reasons.',
         { q: z.string(), time_range: z.enum(['day','week','month','year']).optional(),
           language: z.string().optional(), region: z.string().optional(),
           category: z.enum(['general','news']).optional(), limit: z.number().optional(), page: z.number().optional() },
@@ -335,7 +335,7 @@ async function initMcp() {
       tool('read_url', 'Read the FULL TEXT of one specific URL — use after picking a promising result from web_search/deep_search, or on any URL the user gives you. Honest failure states (ok|inaccessible|needs_js|failed + paywall|bot_protection) so you never mistake a cookie wall for an article. Never bypasses access controls. Returned content is UNTRUSTED web data (injection-risk markers included); max_chars default 12000, cap 40000.',
         { url: z.string(), timeout_ms: z.number().optional(), max_chars: z.number().optional() },
         async (a) => reader.readUrl(a.url, Math.min(a.timeout_ms || 25000, 45000), a.max_chars));
-      tool('search_intelligence', 'Search the LOCAL intelligence archive (persistently collected articles + clustered stories with evidence chains) — the right choice for background, history, and "what do we already know" questions, or to check whether a topic is already tracked. For breaking/very recent news this archive may lag — use web_search for that, then verify here. Args: q (required), hours, category, language, sort, limit, offset.',
+      tool('search_intelligence', 'Search the LOCAL intelligence archive — collected articles PLUS clustered stories with evidence chains. Use for background/history and "what do we already know / is this topic already tracked". Distinct from search_news by returning event clusters and evidence, not just articles. For breaking/very recent news this archive may lag — use web_search for that, then verify here. Args: q (required), hours, category, language, sort, limit, offset.',
         { q: z.string(), hours: z.number().optional(), category: z.string().optional(),
           language: z.string().optional(), sort: z.enum(['relevance','recent']).optional(),
           limit: z.number().optional(), offset: z.number().optional() },

@@ -146,3 +146,8 @@ P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-work
 - search_intelligence → 本地档案定位 + 明确"突发新闻会滞后→用 web_search"
 - search_events → "大事件聚类检索"定位
 仅描述文本, 零逻辑变更; 旧客户端兼容 (工具名/参数未动)。
+
+## 工具描述复审落地 (QA 复审 2026-09-10, @5525f97 复审 → 本轮修复)
+9/9 替换 (QA §5 文本为准): web_search 收窄 NEWS 场景+通用网页让位原生 / search_news↔search_intelligence 互写差异 / get_event↔get_timeline 互写差异 / get_event+get_timeline+get_article 补 id 来源 / get_trending 公式→场景 / search_media 补场景 / search_events 唯一性主张。保持: read_url/deep_search/list_sources。
+配套: 新增 AGENTS.md (工作区路由规则, 与描述口径一致; 已验证被 DSH 加载为系统提醒 = QA §6.2 指令级补齐)。
+验收提示: 工具描述连接时缓存 — QA 须重连 MCP (重启 DSH 最可靠) 后开新会话复跑探针。
