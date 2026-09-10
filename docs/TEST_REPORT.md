@@ -151,3 +151,18 @@ P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-work
 9/9 替换 (QA §5 文本为准): web_search 收窄 NEWS 场景+通用网页让位原生 / search_news↔search_intelligence 互写差异 / get_event↔get_timeline 互写差异 / get_event+get_timeline+get_article 补 id 来源 / get_trending 公式→场景 / search_media 补场景 / search_events 唯一性主张。保持: read_url/deep_search/list_sources。
 配套: 新增 AGENTS.md (工作区路由规则, 与描述口径一致; 已验证被 DSH 加载为系统提醒 = QA §6.2 指令级补齐)。
 验收提示: 工具描述连接时缓存 — QA 须重连 MCP (重启 DSH 最可靠) 后开新会话复跑探针。
+
+# QA R9 (搜索能力 + 内存) 处置 (2026-09-10)
+
+| ID | 处置 | 运行时证据 |
+|---|---|---|
+| M1 DDG POST→GET | 已部署 (服务器 grep: 0 处 POST, 1 处 R9-M1) | 首测 ok 9-10 条 (python-httpx.org 首位); 后续 202 = 同 IP 连续 5+ 次测试触发 DDG 频控, 方法修复正确 (QA 变量法: POST恒202/GET恒200), 频控属上游瞬态 |
+| M2 Bing 正则+解包 | b_algo[^>]* + h2[^>]* + 三捕获组 + ck/a 跳转链解包 (u=a1<base64→真实URL) + &amp; 解码 + publisher_domain 回填 | **bing ok, python.org / serv00.com 真实 URL, snippet 正常** |
+| M3 描述改回通用 | web_search 描述恢复通用主张 (聚合 DDG/Bing 通用索引 + 新闻源 + Wikipedia); AGENTS.md 同步口径 | tools/list ✓ |
+| M4-A 采集错峰 | reader.js 读 collector-state.json (30s TTL): last_status=running → 并发 2→1, 削 ~65MB 峰值 | node --check + 部署一致 |
+| M11 retry 计数 | extractor stats 增加 retry (可重试失败独立计数) | ast ✓ |
+
+## 过程事故 (如实记录, 两次短暂影响生产)
+1. reader.js 重复 require (我的 M4 补丁与既有 fs/path/os 声明冲突) → node --check 抓获但为时已晚 (已 scp) → MCP 短暂不可用 → 删重复声明恢复。教训: **node --check 必须在 scp 之前, 且补丁前先 grep 既有声明**。
+2. python 尾逗号 typo `s.replace(...),` → write() 收到 tuple, websearch.js 被截断为 0 字节且已误传服务器 → 从 git 基线 (4a05732) 恢复 + 重放当日补丁 (断言校验) → 全量复测通过。教训: **危险操作前 wc -c 校验文件大小**。
+两次事故窗口 <2 分钟, 均由部署后立即 MCP 验证发现。

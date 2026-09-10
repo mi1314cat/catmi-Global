@@ -135,10 +135,7 @@ function unwrapDdg(u) {
 
 async function ddgHtml(q, opts) {
   const p = new URLSearchParams({ q, kl: opts.region_ddg || opts.region || 'wt-wt', df: opts.time_range || '' });
-  const r = await fetchText('https://html.duckduckgo.com/html/?' + p.toString(), {
-    method: 'POST', body: new URLSearchParams({ q }).toString(),
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  const r = await fetchText('https://html.duckduckgo.com/html/?' + p.toString());   // [R9-M1] POST 恒202, GET 200 (QA 变量法实测)
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const out = [];
   const re = /<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
@@ -160,13 +157,27 @@ async function bingHtml(q, opts) {
   const r = await fetchText('https://www.bing.com/search?' + p.toString());
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const out = [];
-  const re = /<li class="b_algo">[\s\S]*?<h2><a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a><\/h2>([\s\S]*?)<\/li>/g;
+  // [R9-M2] b_algo 允许属性 + h2 允许属性 + 三捕获组(href/标题/snippet); ck/a 跳转链解包 u=a1<base64>
+  const re = /<li class="b_algo"[^>]*>[\s\S]*?<h2[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)<\/li>/g;
   let m;
+  const dec = (t) => t.replace(/&amp;/g, '&');
   while ((m = re.exec(r.text)) && out.length < opts.limit) {
-    const url = m[1].startsWith('http') ? m[1] : 'https://www.bing.com' + m[1];
+    let url = dec(m[1]);
+    if (!url.startsWith('http')) url = 'https://www.bing.com' + url;
+    try {
+      if (/bing\.com\/ck\/a/.test(url)) {
+        const u = new URL(url);
+        const inner = (u.searchParams.get('u') || '').replace(/^a1/, '');
+        if (inner) { const real = Buffer.from(inner, 'base64').toString('utf8'); if (/^https?:\/\//.test(real)) url = real; }
+      }
+    } catch { /* keep */ }
     const title = m[2].replace(/<[^>]+>/g, '').trim();
     const snip = (m[3].match(/<p[^>]*>([\s\S]*?)<\/p>/) || [, ''])[1].replace(/<[^>]+>/g, '').trim().slice(0, 300);
-    if (title && !url.includes('bing.com/acl')) out.push(normResult({ title, url, snippet: snip }, 'bing', out.length, opts.language));
+    if (title && !url.includes('bing.com/acl')) {
+      const x = normResult({ title, url, snippet: snip }, 'bing', out.length, opts.language);
+      try { const d = new URL(url).hostname.replace(/^www\./, ''); x.publisher_domain = d; x.canonical_url = url; x.source = d; } catch { /* */ }
+      out.push(x);
+    }
   }
   if (!out.length) throw new Error('0 results (blocked?)');
   return out;

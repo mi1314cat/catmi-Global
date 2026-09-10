@@ -6,5 +6,5 @@
 - 需要多源交叉验证的深度研究 → MCP `deep_search`；快速链接列表 → MCP `web_search`
 - 读具体网页全文 → MCP `read_url`（诚实失败状态：paywall/bot_protection/needs_js 不会骗你）
 - 技术文档 / 代码 / npm / GitHub / HN / StackOverflow / Wikipedia → 原生 platform_search / 原生 web_search
-- 通用网页事实（官网、产品页、百科、教程）→ 原生优先，MCP `web_search` 仅作新闻向补充
+- 通用网页事实（官网、产品页、百科、教程）→ MCP `web_search` 可作首选（已聚合 DDG+Bing 通用索引）；npm/GitHub/HN/SO 等平台内检索仍用原生 platform_search
 - id 的来源：event/story id 来自 search_events/get_trending/search_intelligence；article id 来自 search_news/search_intelligence

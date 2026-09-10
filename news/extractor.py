@@ -88,7 +88,7 @@ def run(con, fetcher, limit=None):
           AND a.source_id NOT IN (SELECT COALESCE(source_id,-1) FROM crawl_errors
                                   WHERE at>=? GROUP BY source_id HAVING COUNT(*)>=?)   -- [R6-P0-S2] 来源熔断
         ORDER BY t.id LIMIT ?""", (now, dbm.iso_ago(hours=24), config.SOURCE_BREAKER_ERRORS, limit or config.FETCH_BATCH)).fetchall()
-    stats = {"done": 0, "noextract": 0, "failed": 0, "dupe": 0}
+    stats = {"done": 0, "noextract": 0, "failed": 0, "dupe": 0, "retry": 0}   # [R9-M11]
     for t in tasks:
         con.execute("UPDATE crawl_tasks SET state='running', updated_at=? WHERE id=?", (now, t["tid"]))
         con.commit()
@@ -149,6 +149,7 @@ def run(con, fetcher, limit=None):
             else:
                 backoff = config.TASK_RETRY_BACKOFF[min(attempts - 1, len(config.TASK_RETRY_BACKOFF) - 1)]
                 nxt = dbm.iso_ago(seconds=-backoff)
+                stats["retry"] += 1
                 con.execute("""UPDATE crawl_tasks SET state='failed', attempts=?, last_error=?,
                                next_attempt_at=?, updated_at=? WHERE id=?""",
                             (attempts, str(ex)[:300], nxt, now, t["tid"]))

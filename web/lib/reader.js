@@ -2,6 +2,19 @@
 // 并发守卫: 最多 2 个同时子进程（保护 20 进程预算）; 25s 硬超时; Crawl4AI 不默认。
 'use strict';
 const { spawn } = require('child_process');
+// [R9-M4A] 内存红线: 512MB 上限下, 采集窗口(collector ~130s/10min, 占空比22%)内并发 2→1
+// 最坏叠加 = node 130 + read_url×2×60 + collector 200 ≈ 460MB(90%) → 错峰后削掉 ~65MB
+let _cLimit = 2, _cAt = 0;
+function currentLimit() {
+  const now = Date.now();
+  if (now - _cAt < 30000) return _cLimit;
+  _cAt = now;
+  try {
+    const st = JSON.parse(fs.readFileSync(path.join(os.homedir(), 'news-project', 'news-data', 'state', 'collector-state.json'), 'utf8'));
+    _cLimit = st.last_status === 'running' ? 1 : 2;
+  } catch { _cLimit = 2; }
+  return _cLimit;
+}
 const path = require('path');
 const os = require('os');
 
@@ -39,7 +52,7 @@ function exec(url, timeoutMs, maxChars) {
 function readUrl(url, timeoutMs = 25000, maxChars = 12000) {
   if (!/^https?:\/\//.test(url)) return Promise.resolve({ url, status: 'failed', error: 'invalid url' });
   maxChars = Math.max(200, Math.min(+maxChars || 12000, 40000));   // absolute 上限
-  if (running >= 2) return new Promise((res) => queue.push(() => exec(url, timeoutMs, maxChars).then(res)));
+  if (running >= currentLimit()) return new Promise((res) => queue.push(() => exec(url, timeoutMs, maxChars).then(res)));
   return exec(url, timeoutMs, maxChars);
 }
 
