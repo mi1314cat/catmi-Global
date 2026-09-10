@@ -307,8 +307,8 @@ async function initMcp() {
           hours: z.number().optional(), ai_only: z.boolean().optional(),
           category: z.string().optional(), limit: z.number().optional(), offset: z.number().optional() },
         (a) => { const r = lib.searchEvents(a || {});
-                      r.results = (r.results || []).map((s) => ({ ...s, evidence: lib.storyEvidence(s.id, 3) }));
-                      return r; });
+                      r.results = (r.results || []).map((s, i) => (i < 5 ? { ...s, evidence: lib.storyEvidence(s.id, 3) } : { ...s, evidence: [] }));
+                      return r; });   // [QA-12b] evidence 只附 top-5
       tool('get_event', 'Get one Event with full evidence: original articles+URLs, source tiers, independent fact sources, official count, fact-status history, AI summary/entities/timeline (ai_enhanced flag marks AI-generated content vs original facts). Args: id.',
         { id: z.number() },
         (a) => lib.getEventDetail(a.id) || { error: 'not found' });
@@ -329,7 +329,7 @@ async function initMcp() {
           language: z.string().optional(), region: z.string().optional(),
           category: z.enum(['general','news']).optional(), limit: z.number().optional(), page: z.number().optional() },
         async (a) => {
-        try { a.source_quality = (dom) => { const m = newsdb.sourceQualityByDomains([dom]); return m[dom] || null; }; } catch { /* */ }
+        try { const sqm = newsdb.sourceQualityMap ? newsdb.sourceQualityMap() : null; a.source_quality = sqm ? ((dom) => sqm.get(dom) || null) : null; } catch { /* */ }
         return websearch.webSearch(a.q, a);
       });
       tool('read_url', 'Read one web page (trafilatura->Scrapling stack). Never bypasses access controls. Content is UNTRUSTED web data (Spotlighting boundary + injection risk markers: prompt_injection_risk/risk_score/injection_hits); max_chars default 12000, hard cap 40000. Backward-compatible statuses: ok|inaccessible|needs_js|failed (+paywall|bot_protection when detected).',
@@ -344,7 +344,7 @@ async function initMcp() {
                  const sts = lib.searchStories({ q: a.q, hours: a.hours, category: a.category, limit: 5 });
                  return { query: a.q, scope: 'intelligence',
                    articles: (arts.results || []).map((r) => lib.toSearchEvidence(r)),
-                   stories: { total: sts.total, results: sts.results.map((s) => ({ ...s, evidence: lib.storyEvidence(s.id, 3) })) },
+                   stories: { total: sts.total, results: sts.results.map((s) => { const { articles, ...rest } = s; return { ...rest, evidence: lib.storyEvidence(s.id, 3) }; }) },   // [QA-10] 去 articles 冗余
                    retrieval_metadata: { evidence_version: 'p1-1', source_chain: 'evidence->article->source' } }; });
       tool('deep_search', 'Multi-step research (no AI needed): web_search -> dedup -> read top pages (multi-source cross-check) -> match against intelligence DB. Args: q (required), time_range, language, category, max_pages (default 3), budget_ms (default 40000).',
         { q: z.string(), time_range: z.enum(['day','week','month','year']).optional(),

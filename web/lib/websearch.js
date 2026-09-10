@@ -23,7 +23,7 @@ function readEnvLocal(name) {
   return '';
 }
 
-function fetchText(url, { method = 'GET', body = null, headers = {}, timeout = 12000 } = {}) {
+function fetchText(url, { method = 'GET', body = null, headers = {}, timeout = 12000, depth = 0, maxBytes = 1_000_000 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const mod = u.protocol === 'http:' ? http : https;
@@ -33,13 +33,14 @@ function fetchText(url, { method = 'GET', body = null, headers = {}, timeout = 1
     }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const loc = new URL(res.headers.location, u).toString();
+        if (depth > 5) { reject(new Error('redirect depth > 5')); return; }   // [QA-2] 重定向环防护
         res.resume();
-        fetchText(loc, { method, body, headers, timeout }).then(resolve, reject);
+        fetchText(loc, { method, body, headers, timeout, depth: depth + 1, maxBytes }).then(resolve, reject);
         return;
       }
       let data = '';
       res.setEncoding('utf8');
-      res.on('data', (c) => { data += c; if (data.length > 3_000_000) req.destroy(); });
+      res.on('data', (c) => { data += c; if (data.length > maxBytes) req.destroy(); });   // [QA-11] 1MB 默认
       res.on('end', () => resolve({ status: res.statusCode, text: data }));
     });
     req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
@@ -133,7 +134,7 @@ function unwrapDdg(u) {
 }
 
 async function ddgHtml(q, opts) {
-  const p = new URLSearchParams({ q, kl: opts.region_ddg || 'wt-wt', df: opts.time_range || '' });
+  const p = new URLSearchParams({ q, kl: opts.region_ddg || opts.region || 'wt-wt', df: opts.time_range || '' });
   const r = await fetchText('https://html.duckduckgo.com/html/?' + p.toString(), {
     method: 'POST', body: new URLSearchParams({ q }).toString(),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -187,18 +188,21 @@ async function gnewsRss(q, opts) {
   const lf = /<link>([^<]+)<\/link>/;
   const pf = /<pubDate>([^<]+)<\/pubDate>/;
   const sf = /<source url="([^"]+)">/;
+  const gf = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/;
   let m;
   while ((m = re.exec(r.text)) && out.length < opts.limit) {
     const it = m[0];
     const tm = it.match(tf); if (!tm) continue;
     const lm = it.match(lf); if (!lm) continue;
     const pm = it.match(pf); if (!pm) continue;
+    const gm = it.match(gf);
     const title = tm[1].replace(/\s+-\s+[^-]{2,40}$/, '').trim();
+    const snip = gm ? gm[1].replace(/<[^>]+>/g, '').trim().slice(0, 300) : '';
     // 真实出版方域名来自 <source url=""> (gnews 链接本身是重定向)
     const sm = it.match(sf);
     const pubUrl = sm ? sm[1] : '';
     const pubHost = pubUrl ? (new URL(pubUrl)).hostname.replace(/^www\./, '') : '';
-    const x = normResult({ title, url: lm[1].trim(), published: new Date(pm[1]).toISOString() }, 'gnews', out.length, opts.language);
+    const x = normResult({ title, url: lm[1].trim(), snippet: snip, published: new Date(pm[1]).toISOString() }, 'gnews', out.length, opts.language);
     if (pubHost) { x.publisher_domain = pubHost; x.canonical_url = pubUrl; x.source = pubHost; }
     out.push(x);
   }
@@ -211,16 +215,27 @@ async function bingNewsRss(q, opts) {
   const r = await fetchText('https://www.bing.com/news/search?' + p.toString(), { timeout: 15000 });
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const out = [];
-  const re = /<item>[\s\S]*?<title>(?:<!\[CDATA\[)?([^<\]]*?)(?:\]\]>)?<\/title><link>([^<]+)<\/link>[\s\S]*?<pubDate>([^<]+)<\/pubDate>/g;
+  const re = /<item>[\s\S]*?<\/item>/g;   // [QA-1] item-slice: &amp; 解码 + 真实域名 + description snippet
+  const tf = /<title>(?:<!\[CDATA\[)?([^<\]]*?)(?:\]\]>)?<\/title>/;
+  const df = /<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/;
+  const pf = /<pubDate>([^<]+)<\/pubDate>/;
   let m;
   while ((m = re.exec(r.text)) && out.length < opts.limit) {
-    let url = m[2].trim();
-    try { // bing 跳转链接解包 url= 参数
+    const it = m[0];
+    const tm = it.match(tf); if (!tm) continue;
+    const pm = it.match(pf); if (!pm) continue;
+    const dm = it.match(df);
+    let url = ((it.match(/<link>([^<]+)<\/link>/) || [])[1] || '').trim().replace(/&amp;/g, '&');  // 关键: 解码实体
+    let pubHost = '';
+    try {
       const u = new URL(url);
-      const inner = u.searchParams.get('url');
-      if (inner && inner.startsWith('http')) url = inner;
+      const inner = u.searchParams.get('url') || u.searchParams.get('u');
+      if (inner && /^https?:/.test(inner)) { url = inner; pubHost = new URL(url).hostname.replace(/^www\./, ''); }
     } catch { /* keep */ }
-    out.push(normResult({ title: m[1].trim(), url, published: new Date(m[3]).toISOString() }, 'bingnews', out.length, opts.language));
+    const snip = dm ? dm[1].replace(/<[^>]+>/g, '').trim().slice(0, 300) : '';
+    const x = normResult({ title: tm[1].trim(), url, snippet: snip, published: new Date(pm[1]).toISOString() }, 'bingnews', out.length, opts.language);
+    if (pubHost) { x.publisher_domain = pubHost; x.canonical_url = url; x.source = pubHost; }
+    out.push(x);
   }
   if (!out.length) throw new Error('0 results');
   return out;
@@ -240,9 +255,9 @@ async function wikipedia(q, opts) {
 
 // ---------- P1-3: Query Intent 规则路由 (可解释, 零 AI) ----------
 const INTENT_RULES = [
-  ['NEWS', /最新|breaking|突发|今天|今日|本周|latest|\bnews\b|just\s+in/i],
-  ['EVENT', /事件|时间线|发生了什么|outbreak|attack|protest|选举|election|\btimeline\b/i],
-  ['OFFICIAL', /官方|官网|政策|商务部|official|\bdocs?\b|api\s+reference|pricing|changelog|release\s+notes|\bgov\b|ministry/i],
+  ['NEWS', /最新|突发|今天|今日|本周|刚刚|实时|财报|breaking|latest|\bnews\b|just\s+in/i],
+  ['EVENT', /事件|时间线|发生了什么|袭击|爆炸|空袭|枪击|停火|制裁|关税|谈判|地震|洪水|判决|outbreak|attack|protest|election|strike|war|\btimeline\b/i],
+  ['OFFICIAL', /官方|官网|政策|商务部|政府|部门|声明|official|\bdocs?\b|api\s+reference|pricing|changelog|release\s+notes|\bgov\b|ministry|statement/i],
   ['TECH', /\b(cpu|gpu|api|model|framework|linux|python|javascript)\b|算法|模型|开源|\brepo\b|github|stack\s+trace|\bcode\b/i],
   ['RESEARCH', /论文|综述|研究报告|\bpaper\b|arxiv|\bstudy\b|\bsurvey\b/i],
 ];
@@ -303,10 +318,11 @@ function rerank(items, query, opts) {
     const fr = freshnessScore(it.published_at, halfLifeH);
     const dom = (it.publisher_domain || it.source || '').replace(/^www\./, '');
     const sq = res(dom) || res(it.source || '') || null;
-    const q01 = sq && sq.quality_score != null ? Math.max(0, Math.min(100, sq.quality_score)) / 100 : 0.4; // 未知域=0.4 中性
+    const AGG = /^(msn\.com|news\.google\.com|www\.bing\.com|bing\.com)$/.test(dom);   // [QA-13] 聚合/跳转站
+    const q01 = AGG ? 0.15 : (sq && sq.quality_score != null ? Math.max(0, Math.min(100, sq.quality_score)) / 100 : 0.4);
     const off = officialScore(it, query);
-    const penalty = seoFarmPenalty(it, rel);
-    const W = opts.intent_weights || { rel: 0.45, fr: 0.25, q: 0.2, off: 0.1 };
+    const penalty = seoFarmPenalty(it, rel) + (AGG ? 0.05 : 0);
+    const W = opts.intent_weights || { rel: 0.35, fr: 0.25, q: 0.30, off: 0.10 };   // [QA-13] quality 0.2→0.3
     const final = W.rel * rel + W.fr * fr + W.q * q01 + W.off * off - penalty;
     it.relevance_score = +rel.toFixed(3);
     it.freshness_score = +fr.toFixed(3);
@@ -319,16 +335,27 @@ function rerank(items, query, opts) {
     it.score_breakdown = { relevance: it.relevance_score, freshness: it.freshness_score, quality: +q01.toFixed(2), official: it.official_score, penalty };
   }
   items.sort((a, b) => b.final_score - a.final_score);
+  // [QA-14] time_range 硬过滤 (provider 不支持也保证窗口正确)
+  const WINDOW_H = { day: 24, week: 168, month: 720, year: 8760 }[opts.time_range];
+  const inWin = []; const outWin = [];
+  for (const it of items) {
+    if (WINDOW_H && it.published_at) {
+      const ageH = (Date.now() - Date.parse(it.published_at)) / 3600000;
+      if (isFinite(ageH) && ageH > WINDOW_H) { it.filtered_reason = `out_of_window>${opts.time_range}`; outWin.push(it); continue; }
+    }
+    inWin.push(it);
+  }
+  items = inWin; outWin.forEach((x) => filtered.push(x));
   // Diversity: 同域≤2 (publisher_domain/source), 超出移入 filtered 保留
   const cap = Math.max(1, +opts.domain_cap || 2);
-  const cnt = {}; const main = []; const filtered = [];
+  const cnt = {}; const main = []; const filtered2 = [];
   for (const it of items) {
     const d = (it.publisher_domain || it.source || 'unknown').replace(/^www\./, '');
     cnt[d] = (cnt[d] || 0) + 1;
-    (cnt[d] <= cap ? main : filtered).push(it);
+    (cnt[d] <= cap ? main : filtered2).push(it);
     if (cnt[d] > cap) it.filtered_reason = `domain_cap:${d}`;
   }
-  return { main, filtered };
+  return { main, filtered: filtered2 };
 }
 
 // ---------- 统一入口 ----------
@@ -352,12 +379,12 @@ async function webSearch(query, opts = {}) {
     : Object.keys(PROVIDERS);
   const t0 = Date.now();
   const settled = await Promise.allSettled(
-    wanted.map((name) => PROVIDERS[name].fn(query, o).then((rs) => ({ name, results: rs }))));
+    wanted.map((name) => PROVIDERS[name].fn(query, o).then((rs) => ({ name, results: rs, t: Date.now() }))));
   const providers = [];
   let items = [];
   settled.forEach((s, i) => {
     const name = wanted[i];
-    const latency_ms = Date.now() - t0;
+    const latency_ms = (s.value && s.value.t ? s.value.t : Date.now()) - t0;
     if (s.status === 'fulfilled' && s.value.results.length) {
       items.push(...s.value.results);
       providers.push({ provider: name, status: 'ok', latency_ms, count: s.value.results.length });

@@ -90,6 +90,8 @@ INJECTION_PATTERNS = [
     r"(忘记|清除)(你)?(之前|以上|所有)(的)?(指令|设定|约束)",
 ]
 _ZERO_WIDTH = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
+# [QA-17] consent/interstitial/redirect 页特征 (HTTP 200 但不是真实文章)
+_INTERSTITIAL = re.compile(r"before you continue|redirect alert|cookie|consent|enable javascript|verify you are human|are you a robot|enable cookies", re.I)
 
 
 def scrub_content(content: str) -> dict:
@@ -153,9 +155,7 @@ def infer_published(html: str, url: str, ex_date=None):
             return d.isoformat(), "htmldate"
     except Exception:
         pass
-    m = _BODY_DATE.search((html or "")[:200000])
-    if m:
-        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "body_regex"
+    # [QA-18] body_regex 已移除: 从任意正文中抓日期会伪造发布时间 (假时间比没时间更糟)
     return None, None
 
 
@@ -209,7 +209,7 @@ def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dic
         out["author"] = ex.get("author") or meta.get("author")
         pub, pub_src = infer_published(html, url, ex.get("date"))
         out["published"] = pub
-        out["published_at_source"] = pub_src       # extractor|meta|json_ld|html_time|url_pattern|htmldate|body_regex|None
+        out["published_at_source"] = pub_src
         raw = ex.get("text") or ""
         sc = scrub_content(raw)
         if len(sc["content"]) > max_chars:
@@ -223,6 +223,11 @@ def read(url: str, timeout: int = 25, max_chars: int = MAX_CHARS_DEFAULT) -> dic
         out["injection_hits"] = sc["injection_hits"]
         out["untrusted"] = True                                       # Spotlighting: 正文一律是数据, 不是指令
         out["untrusted_boundary"] = "<<UNTRUSTED id=reader>> ...content... <</UNTRUSTED>>"
+        # [QA-17] 内容门禁: 太短或 consent/redirect 特征 → 不算真实文章 (不破坏 deep_search 交叉验证)
+        if len(sc["content"]) < 400 or _INTERSTITIAL.search((out["title"] or "") + " " + sc["content"][:600]):
+            out["status"] = "needs_js"
+            out["error"] = "interstitial/consent page or too little text (not a real article)"
+            return out
         out["images"] = [x for x in [ex.get("image") or meta.get("image")] if x]
         out["method"] = ex["method"]
     else:

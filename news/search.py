@@ -21,7 +21,7 @@ def search_articles(con, q, *, hours=None, category=None, source=None, language=
     fts = fts_query(q)
     where, params = [], []
     if hours:
-        where.append("(a.published_at IS NULL OR a.published_at>=?) OR (a.published_at IS NULL AND a.discovered_at>=?)")
+        where.append("((a.published_at IS NULL OR a.published_at>=?) OR (a.published_at IS NULL AND a.discovered_at>=?))")
         params += [_cutoff(hours), _cutoff(hours)]
     if category: where.append("a.category=?"); params.append(category)
     if language: where.append("a.language=?"); params.append(language)

@@ -78,7 +78,8 @@ function searchArticles({ q, hours, category, source, language, sort, limit, off
       : 'ORDER BY bm25(articles_fts), a.discovered_at DESC';
     rows = db().prepare(
       `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
-              a.published_at, a.fetched_at, a.discovered_at, a.language, a.summary_text, a.content,
+              a.published_at, a.fetched_at, a.discovered_at, a.language,
+              substr(COALESCE(a.summary_text, a.content), 1, 500) AS excerpt,
               a.extract_method, a.category, a.status, a.image_main_url,
               s.id AS s_id, s.name, s.slug AS source_slug, s.source_type, s.tier, s.quality_score, s.verification_status,
               snippet(articles_fts, 1, '[', ']', '…', 12) AS snippet
@@ -91,7 +92,8 @@ function searchArticles({ q, hours, category, source, language, sort, limit, off
          JOIN sources s ON s.id = a.source_id WHERE articles_fts MATCH ?${wsql}`).get(ftsQuery(q, 'or'), ...params).n;
       rows = db().prepare(
         `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
-              a.published_at, a.fetched_at, a.discovered_at, a.language, a.summary_text, a.content,
+              a.published_at, a.fetched_at, a.discovered_at, a.language,
+              substr(COALESCE(a.summary_text, a.content), 1, 500) AS excerpt,
               a.extract_method, a.category, a.status, a.image_main_url,
               s.id AS s_id, s.name, s.slug AS source_slug, s.source_type, s.tier, s.quality_score, s.verification_status,
               snippet(articles_fts, 1, '[', ']', '…', 12) AS snippet
@@ -157,7 +159,7 @@ function getArticle(id) {
   if (!a) return null;
   delete a.raw_path;
   a.images = db().prepare(
-    `SELECT id, original_url, local_path, content_hash, width, height, mime, main
+    `SELECT id, original_url, content_hash, width, height, mime, main   // [QA-9] 不暴露 local_path
      FROM images WHERE article_id = ?`).all(+id);
   if (a.story_id) {
     a.story = db().prepare(
@@ -194,7 +196,9 @@ function searchStories({ q, hours, category, limit, offset }) {
 }
 
 function getStory(id) {
-  const st = db().prepare('SELECT * FROM stories WHERE id = ?').get(+id);
+  const st = db().prepare(`SELECT id,title,summary,first_seen,last_updated,heat,importance,category,language,
+    article_count,source_count,video_count,status,fact_status,independent_source_count,
+    ai_enhanced,ai_model,ai_at,ai_summary,ai_entities,ai_timeline FROM stories WHERE id = ?`).get(+id);   // [QA-8]
   if (!st) return null;
   const arts = db().prepare(
     `SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url, a.author, a.source_id,
@@ -212,7 +216,7 @@ function getStory(id) {
 // ---------- trending / sources / categories ----------
 function trending({ hours, category, limit }) {
   hours = +hours || 24; limit = Math.min(+limit || 20, 50);
-  const params = [hours];
+  const params = [isoAgo(hours)];   // [QA-4] hours=活跃度窗口; window_hours 固定 24
   let wcat = '';
   if (category) { wcat = ' AND st.category = ?'; params.push(category); }
   return db().prepare(
@@ -220,7 +224,7 @@ function trending({ hours, category, limit }) {
             st.article_count, st.source_count, st.first_seen, st.last_updated,
             st.entities, st.locations
      FROM trending t JOIN stories st ON st.id = t.story_id
-     WHERE t.window_hours = ?${wcat}
+     WHERE t.window_hours = 24 AND st.last_updated >= ?${wcat}
      ORDER BY t.score DESC LIMIT ?`).all(...params, limit);
 }
 
@@ -320,12 +324,14 @@ function searchEvents({ q, min_importance, hours, limit, offset, ai_only }) {
   ).all(...params, limit, offset);
   const ev = db().prepare(`SELECT COUNT(DISTINCT e.domain) AS n FROM event_evidence e
     WHERE e.story_id=? AND e.tier IN ('A','B') AND e.is_original=1`);
-  const cnt = db().prepare(`SELECT COUNT(*) AS n FROM articles WHERE story_id=?`);
+  const cnt = db().prepare(`SELECT COUNT(DISTINCT source_id) AS n FROM articles WHERE story_id=?`);   // [QA-5] 独立来源数
   for (const r of rows) { r.source_count = cnt.get(r.id).n; r.independent_fact_sources = ev.get(r.id).n; }
   return { total, limit, offset, results: rows };
 }
 function getEventDetail(id) {
-  const st = db().prepare(`SELECT * FROM stories WHERE id=? AND status='active'`).get(id);
+  const st = db().prepare(`SELECT id,title,summary,first_seen,last_updated,heat,importance,category,language,
+    article_count,source_count,video_count,status,fact_status,independent_source_count,
+    ai_enhanced,ai_model,ai_at,ai_summary,ai_entities,ai_timeline FROM stories WHERE id=? AND status='active'`).get(id);   // [QA-8] 排除 fingerprint
   if (!st) return null;
   st.articles = db().prepare(`SELECT a.id, a.story_id, a.title, a.original_title, a.url, a.canonical_url,
     a.author, a.source_id, a.published_at, a.fetched_at, a.discovered_at, a.language,
@@ -348,6 +354,7 @@ function getEventDetail(id) {
 // P1-1: 检索结果统一 Evidence 形状 (映射层, 零新存储; snippet 来自 FTS5 仍属 UNTRUSTED)
 function toSearchEvidence(r, extra) {
   const ev = toEvidence(r, r);
+  if (r.excerpt) ev.excerpt = String(r.excerpt);
   ev.snippet = (r.snippet || ev.excerpt || '').slice(0, 500);
   ev.untrusted = true;
   if (extra) Object.assign(ev, extra);
@@ -365,7 +372,26 @@ function storyEvidence(storyId, k = 3) {
     .map((r) => toSearchEvidence(r));
 }
 
+let _sqMap = null;
+function sourceQualityMap() {
+  // [QA-6] 102 行一次读入+缓存; 消掉每请求 160-240 次 LIKE
+  if (_sqMap) return _sqMap;
+  _sqMap = new Map();
+  for (const r of db().prepare(`SELECT id, name, source_type, tier, quality_score, site_url, feed_url FROM sources WHERE disabled=0`).all()) {
+    for (const u of [r.site_url, r.feed_url]) {
+      if (!u) continue;
+      try { _sqMap.set(new URL(u).hostname.replace(/^www\./, ''), { source_id: r.id, name: r.name, source_type: r.source_type, tier: r.tier, quality_score: r.quality_score }); } catch { /* */ }
+    }
+  }
+  return _sqMap;
+}
+
 function sourceQualityByDomains(domains) {
+  const m = sourceQualityMap(); const out = {};
+  for (const d0 of domains) { if (!d0) continue; const d = String(d0).toLowerCase().replace(/^www\./, ''); if (m.has(d)) out[d0] = m.get(d); }
+  return out;
+}
+function _legacySqDisabled() {
   // P0-3: domain -> sources 表质量 (一次查询, 不建第二份质量表)
   const out = {};
   for (const d0 of domains) {
