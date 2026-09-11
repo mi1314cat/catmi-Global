@@ -179,3 +179,7 @@ P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-work
 | 6. 无回归 | Bing 5/5 ok (count 4-9); node22 --check 三文件全过 |
 
 **本轮由 QA 误判引发, 已纠正**: R9 的 GET 修改依据了 QA 在其本机 IP 上的单次观测; R10 服务器受控交替实测证明 DDG 按 (方法 x 出口IP) 判定, 服务器 IP 极性相反 → POST 优先 (干净URL+body) + GET 兜底。教训已记录: 测网络拦截必须在生产主机测。
+
+# R11-P3 认证与功能开关 (2026-09-11)
+flags.json 三开关(public_rest/web_search_api/ui_gate) + admin /api/admin/flags GET/POST(CSRF) + Web登录门(302→login.html) + /api/search Bearer/session 保护。UI 移出 public/(app-ui.html, 防 Passenger 静态直服绕门), login.html 入 public/ 由 Passenger 直服。
+实测: 未登录/→302 ✓ 登录后/→200 ✓ logout→302 ✓ /api/search 无auth→401 开关开→200 切回→401 ✓ MCP 200 ✓ /api/news 公开 200 ✓。

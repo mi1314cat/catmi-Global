@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · 全球情报</title><style>body{font-family:system-ui;background:#0d1117;color:#e6edf3;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.c{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:min(92vw,360px)}
+h1{font-size:18px;margin:0 0 16px}input{width:100%;box-sizing:border-box;margin:6px 0;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3}
+button{width:100%;padding:10px;margin-top:10px;background:#238636;border:0;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
+#e{color:#f85149;font-size:13px;min-height:18px;margin-top:8px}</style></head>
+<body><div class="c"><h1>🌐 全球经济情报平台</h1>
+<form onsubmit="return go()"><input id="u" placeholder="用户名" autocomplete="username"><input id="p" type="password" placeholder="密码" autocomplete="current-password"><button>登录</button></form><div id="e"></div></div>
+<script>async function go(){const e=document.getElementById('e');e.textContent='';try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u.value,password:p.value})});const d=await r.json();if(d.ok){location.href='/';}else{e.textContent='用户名或密码错误';}}catch(x){e.textContent='登录失败,请重试';}return false;}</script></body></html>

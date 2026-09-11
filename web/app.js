@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const newsdb = require('./lib/newsdb');
 const querysvc = require('./lib/query');
+const flags = require('./lib/flags');   // [R11-P3] 功能开关
 const reader = require('./lib/reader');
 const websearch = require('./lib/websearch');
 const auth = require('./lib/auth');
@@ -69,8 +70,9 @@ function send(res, code, obj, headers) {
 }
 
 function serveStatic(res, file) {
-  const full = path.normalize(path.join(PUBLIC_DIR, file));
-  if (!full.startsWith(PUBLIC_DIR) || !fs.existsSync(full) || !fs.statSync(full).isFile()) {
+  let full = path.normalize(path.join(PUBLIC_DIR, file));
+  if (!fs.existsSync(full)) { const alt = path.join(__dirname, file); if (fs.existsSync(alt)) full = alt; }   // [R11-P3] 兜底: app 根(非 public/)受门保护
+  if (!(full.startsWith(PUBLIC_DIR) || full.startsWith(__dirname)) || !fs.existsSync(full) || !fs.statSync(full).isFile()) {
     res.writeHead(404); res.end('not found'); return;
   }
   const ext = path.extname(full);
@@ -190,6 +192,16 @@ async function handleAdmin(req, res, url, sess) {
   if (p === '/logs') {
     return ok({ web: adminsvc.tailLog('web.log', 40), cron: adminsvc.tailLog('cron.log', 30), audit: auth.tailAudit(40) });
   }
+  if (p === '/flags' && req.method === 'POST') {   // [R11-P3] 后台一键开关
+  if (p === '/flags') return ok(flags.flags());   // [R11-P3]
+    const chunks = []; for await (const c of req) chunks.push(c);
+    let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
+    const cur = flags.flags();
+    const nw = b.toggle ? Object.assign({}, cur, { [b.toggle]: !cur[b.toggle] })
+      : { public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate };
+    require('fs').writeFileSync(flags.FILE, JSON.stringify(nw, null, 2));
+    return ok(nw);
+  }
   if (p === '/settings') return ok(adminsvc.settings());
   return send(res, 404, { error: 'unknown admin endpoint' });
 }
@@ -228,6 +240,8 @@ function adminRunPython(args, timeoutMs) {
 async function handleApi(req, res, url, ip) {
   const q = url.searchParams;
   const p = url.pathname.replace(/^\/api/, '');
+  const FLAGS = flags.flags();
+  if (!FLAGS.public_rest && p !== '/health' && !p.startsWith('/auth/')) return send(res, 403, { error: 'rest disabled by admin' });   // [R11-P3]
   const ok = (obj) => send(res, 200, obj);
   if (p === '/health') return ok({ ...newsdb.health(), time: new Date().toISOString() });
   if (p === '/status') return ok({ ...newsdb.health(), disk: newsdb.diskStatus(),
@@ -269,6 +283,10 @@ async function handleApi(req, res, url, ip) {
       hours: q.get('hours') || 720, category: 'video', limit: q.get('limit'), offset: q.get('offset') }));
   }
   if (p === '/search') {
+    // [R11-P3] 实时搜索代理必须认证: 后台开关开 或 有效session 或 Bearer(api_tokens) —— 防白嫖出网+伤引擎IP信誉
+    const F = flags.flags();
+    const sessS = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);
+    if (!F.web_search_api && !sessS && !bearerOk(req)) { send(res, 401, { error: 'authentication required for live search' }); return; }
     if (rateLimited('api', ip)) { send(res, 429, { error: 'rate limited' }); done(429); return; }
     const r = await querysvc.search(q.get('q') || '', {
       scope: q.get('scope'), time_range: q.get('time_range'), language: q.get('language'),
@@ -508,7 +526,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (req.method === 'GET') {
-      const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+      // [R11-P3] Web 登录门: ui_gate=true 时未登录→302 /login.html (白名单: 登录页/favicon)
+      const F = flags.flags();
+      const wl = url.pathname === '/login.html' || url.pathname === '/favicon.ico';
+      const sessW = F.ui_gate ? auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]) : true;
+      if (F.ui_gate && !sessW && !wl) {
+        res.writeHead(302, { Location: '/login.html', 'Cache-Control': 'no-store' }); res.end(); done(302); return;
+      }
+      const file = url.pathname === '/' ? 'app-ui.html' : url.pathname.slice(1);   // [R11-P3] UI 移出 public/ 由应用把守; login.html 留 public/ 由 Passenger 直服(白名单页)
       serveStatic(res, file);
       done(200);
       return;
