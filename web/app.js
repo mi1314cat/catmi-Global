@@ -193,15 +193,18 @@ async function handleAdmin(req, res, url, sess) {
     return ok({ web: adminsvc.tailLog('web.log', 40), cron: adminsvc.tailLog('cron.log', 30), audit: auth.tailAudit(40) });
   }
   if (p === '/flags' && req.method === 'POST') {   // [R11-P3] 后台一键开关
-  if (p === '/flags') return ok(flags.flags());   // [R11-P3]
     const chunks = []; for await (const c of req) chunks.push(c);
     let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
     const cur = flags.flags();
     const nw = b.toggle ? Object.assign({}, cur, { [b.toggle]: !cur[b.toggle] })
       : { public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate };
-    require('fs').writeFileSync(flags.FILE, JSON.stringify(nw, null, 2));
-    return ok(nw);
+    try {
+      require('fs').mkdirSync(require('path').dirname(flags.FILE), { recursive: true });
+      require('fs').writeFileSync(flags.FILE, JSON.stringify(nw, null, 2));
+      return ok(nw);
+    } catch (e) { return send(res, 500, { error: 'flag write failed: ' + e.message, file: flags.FILE }); }
   }
+  if (p === '/flags') return ok(flags.flags());   // [R11-P3]
   if (p === '/settings') return ok(adminsvc.settings());
   return send(res, 404, { error: 'unknown admin endpoint' });
 }

@@ -10,7 +10,7 @@ function currentLimit() {
   if (now - _cAt < 30000) return _cLimit;
   _cAt = now;
   try {
-    const st = JSON.parse(fs.readFileSync(path.join(os.homedir(), 'news-project', 'news-data', 'state', 'collector-state.json'), 'utf8'));
+    const st = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'news-project', 'news-data', 'state', 'collector-state.json'), 'utf8'));
     _cLimit = st.last_status === 'running' ? 1 : 2;
   } catch { _cLimit = 2; }
   return _cLimit;
