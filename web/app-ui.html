@@ -295,7 +295,7 @@ async function admMcp(){
     <h2>Token 管理</h2><div class="card tw"><table><tr><th>名称</th><th>状态</th><th>权限(scopes)</th><th>操作</th></tr>
     ${tk.results.length?tk.results.map(t=>`<tr><td><b>${esc(t.name)}</b><div class="meta">${esc(t.token_prefix)}…</div></td>
     <td>${t.revoked?'<span class="tag bad">已撤销</span>':(t.enabled?'<span class="tag ok">启用</span>':'<span class="tag bad">停用</span>')}</td>
-    <td>${t.revoked?'<span class="meta">全部(*)</span>':`<input id="sc-${t.id}" value="${esc(t.scopes||"*")}" placeholder="* 或 tool1,tool2" style="width:150px;max-width:200px"><button style="padding:3px 8px;font-size:12px" onclick="tokScopes(${t.id})">保存</button>`}</td>
+    <td>${t.revoked?'<span class="meta">全部(*)</span>':`<span id="scr-${t.id}" class="meta">${(t.scopes||"*")==="*"?"全部工具":esc(t.scopes||"*")}</span> <button style="padding:3px 8px;font-size:12px" onclick="openScopesModal(${t.id},(t.scopes||'*'))">修改</button>`}</td>
     <td style="white-space:nowrap">${t.revoked?`<button style="padding:3px 8px;font-size:12px" onclick="tokAct(${t.id},'enable')">恢复</button><button class=danger style="padding:3px 8px;font-size:12px" onclick="tokAct(${t.id},'delete')">删除</button>`:`<button class=danger style="padding:3px 8px;font-size:12px" onclick="tokAct(${t.id},'revoke')">撤销</button>`}</td></tr>`).join(""):'<tr><td colspan="6">暂无 Token，点击上方「创建 Token」</td></tr>'}</table></div>
     <h2>工具清单（只读，禁止危险工具）</h2><div class="card tw"><table><tr><th>名称</th><th>中文说明</th><th>参数</th></tr>
     ${MCPTOOLS.map(t=>`<tr><td><code>${t[0]}</code></td><td>${esc(t[1])}</td><td class="meta">${esc(t[2])}</td></tr>`).join("")}</table>
@@ -303,18 +303,31 @@ async function admMcp(){
 function tokCreate(){const d=document.createElement("div");d.className="modal";
   d.innerHTML=`<div class="box"><h2 style="color:var(--fg);font-size:15px">创建 MCP Token</h2>
   <div style="margin:10px 0"><input type=text id=tkn placeholder="名称（如 OpenCode / Agent VPS）" style="width:100%"></div>
-  <div style="margin:10px 0"><input type=text id=tksc value="*" placeholder="权限: * 或 逗号分隔工具名" style="width:100%"></div>
+  <div style="margin:10px 0"><button id=tkscbtn onclick='NEW_SCOPES="*";openScopeModalAll()' style="width:100%">权限: 全部工具 (*，点击修改)</button></div>
   <div class="meta">权限留 * = 全部工具；填清单 = 只许列出的工具（如 search_news,web_search）。Token 创建后仅显示一次，数据库只保存哈希。</div>
   <div style="margin-top:12px;display:flex;gap:8px"><button class=pri onclick="tokDoCreate()">创建</button><button onclick="this.closest('.modal').remove()">取消</button></div></div>`;
   document.body.appendChild(d);$("#tkn").focus()}
-async function tokDoCreate(){try{const r=await adminApi("/api/admin/mcp/tokens/create",{method:"POST",body:JSON.stringify({name:$("#tkn").value.trim(),scopes:$("#tksc").value.trim()||"*"})});
+async function tokDoCreate(){try{const r=await adminApi("/api/admin/mcp/tokens/create",{method:"POST",body:JSON.stringify({name:$("#tkn").value.trim(),scopes:NEW_SCOPES||"*"})});
   $(".modal").remove();const d=document.createElement("div");d.className="modal";
   d.innerHTML=`<div class="box"><h2 style="color:var(--fg);font-size:15px">Token 已创建（仅显示这一次）</h2>
   <p class="meta" style="margin:8px 0">请立即复制保存，关闭后无法再次查看完整 Token。</p>
   <pre class="log" style="user-select:all">${esc(r.token)}</pre>
   <div style="margin-top:10px;display:flex;gap:8px"><button class=pri onclick="copy('${esc(r.token)}','Token')">复制</button><button onclick="this.closest('.modal').remove();goAdmin('mcp')">完成</button></div></div>`;
   document.body.appendChild(d)}catch(e){toast("创建失败："+e.message)}}
-async function tokScopes(id){const v=document.getElementById("sc-"+id).value.trim()||"*";try{const r=await adminApi(`/api/admin/mcp/tokens/${id}`,{method:"POST",body:JSON.stringify({action:"scopes",scopes:v})});toast("权限已保存: "+(r.scopes==="*"?"全部工具":r.scopes))}catch(e){toast("失败："+(e.message||e))}}
+let SCP_TARGET=null, NEW_SCOPES="*";
+function openScopesModal(id,cur){SCP_TARGET=id;const isAll=(cur==="*"||!cur);const m=document.createElement("div");m.className="modal";
+  m.innerHTML=`<div class="box"><h2 style="color:var(--fg);font-size:15px">${id?("修改 Token 权限"):"选择权限"}</h2>
+  <label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type=checkbox id="scp-all" ${isAll?"checked":""} onchange="document.querySelectorAll('.scp-t').forEach(el=>{el.disabled=this.checked;if(this.checked)el.checked=false})"><b>* 全部工具</b></label>
+  <div style="max-height:320px;overflow:auto;margin:8px 0;border-top:1px solid #223">${MCPTOOLS.map(t=>`<label style="display:flex;gap:8px;align-items:center;padding:3px 0"><input type=checkbox class="scp-t" value="${t[0]}" ${(!isAll&&String(cur||"").split(",").includes(t[0]))?"checked":""}> <code>${t[0]}</code><span class="meta">${t[1]}</span></label>`).join("")}</div>
+  <div class="meta">只勾选部分 = 该 token 只能调用勾选工具，其余返回 403。模板运行时按 t.name 渲染。</div>
+  <div style="margin-top:10px;display:flex;gap:8px"><button class=pri onclick="scopesDone()">确定</button><button onclick="this.closest('.modal').remove()">取消</button></div></div>`;
+  document.body.appendChild(m)}
+function openScopeModalAll(){openScopesModal(null,"*")}
+function scopesDone(){const all=document.getElementById("scp-all").checked;
+  const picked=all?"*":[...document.querySelectorAll(".scp-t:checked")].map(el=>el.value).join(",");
+  document.querySelectorAll(".modal").forEach(el=>el.remove());
+  if(SCP_TARGET){tokScopes(SCP_TARGET,picked)}else{NEW_SCOPES=picked;const b=document.getElementById("tkscbtn");if(b)b.textContent=picked==="*"?"权限: 全部工具 (*，点击修改)":"权限: "+picked}}
+async function tokScopes(id,scopes){const v=(scopes!==undefined?scopes:"*")||"*";try{const r=await adminApi(`/api/admin/mcp/tokens/${id}`,{method:"POST",body:JSON.stringify({action:"scopes",scopes:v})});toast(r.ok?("权限已保存: "+(r.scopes==="*"?"全部工具":r.scopes)):(r.error||"失败"));goAdmin("mcp")}catch(e){toast("失败："+(e.message||e))}}
 async function tokAct(id,action){try{await adminApi(`/api/admin/mcp/tokens/${id}`,{method:"POST",body:JSON.stringify({action})});toast(action==="revoke"?"已撤销":action==="enable"?"已恢复":"已删除");goAdmin("mcp")}catch(e){toast("失败："+e.message)}}
 async function mcpTest(){toast("正在执行 MCP 完整健康检查……");
   try{const r=await adminApi("/api/admin/mcp/test");
