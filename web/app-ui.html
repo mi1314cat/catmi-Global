@@ -397,14 +397,14 @@ async function testAi(){
   try{const r=await adminApi("/api/admin/ai/test",{method:"POST",body:"{}"});
     $("#ai-test").innerHTML=r.ok?`<span class="tag ok">连接正常</span> 实际模型: ${esc(r.model)} / ${r.latency}s`:`<span class="tag bad">失败</span> ${esc(r.error||r.raw||"")}`}
   catch(e){$("#ai-test").innerHTML=`<span class="tag bad">失败</span> ${esc(String(e.message||e))}`}}
-const FLAGS_EndOn={};const FLAGS_EndRpm={};
-function FLAGS_EndOn(k){return FLAGS_EndOn.v ? FLAGS_EndOn.v[k]!==false : true}
-function FLAGS_EndRpm(k){return FLAGS_EndOn.r ? (FLAGS_EndOn.r[k]||"") : ""}
+const EP_ST={v:null,r:null};
+function FLAGS_EndOn(k){return EP_ST.v ? EP_ST.v[k]!==false : true}
+function FLAGS_EndRpm(k){return EP_ST.r ? (EP_ST.r[k]??"") : ""}
 function saveEndpoints(){const b={api_endpoints:{},api_rpm:{}};["news","news_latest","news_item","stories","stories_search","trending","sources","media","images","search","status","categories"].forEach(k=>{const el=document.getElementById("ep-"+k);if(el)b.api_endpoints[k]=el.checked;const r=document.getElementById("rpm-"+k);if(r&&r.value!=="")b.api_rpm[k]=+r.value});(async()=>{try{const saved=await adminApi("/api/admin/flags",{method:"POST",body:JSON.stringify(b)});toast("端点设置已保存: 关闭 "+Object.entries(saved.api_endpoints||{}).filter(([k,v])=>!v).map(([k])=>"/api/"+k).join(" ")||"无关闭项")}catch(e){toast("保存失败: "+(e.message||e))}})()}
 async function admSettings(){
   const s=await adminApi("/api/admin/settings");
   let fl={};try{fl=await adminApi("/api/admin/flags")}catch(e){}
-  FLAGS_EndOn.v=fl.api_endpoints||{};FLAGS_EndOn.r=fl.api_rpm||{};
+  EP_ST.v=fl.api_endpoints||{};EP_ST.r=fl.api_rpm||{};
   $("#main").innerHTML=`<div class="card"><div class="row"><b style="font-size:14px">功能开关</b><span class="tag ok">保存即时生效</span></div>
     <div class="meta">公开 REST API：/api/news 等无钥匙读取｜未登录 /api/search：实时搜索代理开放给外人（不建议开，易致引擎封 IP）｜登录门：未登录访问跳登录页。</div>
     <label style="display:flex;align-items:center;gap:10px;padding:8px 0"><input type="checkbox" id="flag-public_rest" ${fl.public_rest?"checked":""}>公开 REST API</label>
