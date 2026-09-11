@@ -250,7 +250,10 @@ async function handleApi(req, res, url, ip) {
   const q = url.searchParams;
   const p = url.pathname.replace(/^\/api/, '');
   const FLAGS = flags.flags();
-  if (!FLAGS.public_rest && p !== '/health' && !p.startsWith('/auth/')) return send(res, 403, { error: 'rest disabled by admin' });   // [R11-P3]
+  if (!FLAGS.public_rest && p !== '/health' && !p.startsWith('/auth/')) {   // [R12-4] 关闭公开 REST 只拦匿名; 登录用户(含你自己)照常使用
+    const SESS0 = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);
+    if (!SESS0) { send(res, 403, { error: 'rest disabled by admin' }); done(403); return; }
+  }
   // [R12-A] 端点级闸门: FLAGS.api_endpoints[name]===false → 403; FLAGS.api_rpm[name] → 每 IP 独立限流
   const EN = (() => {
     if (p === '/news' || p.startsWith('/news/search') || p.startsWith('/news?q')) return 'news';
