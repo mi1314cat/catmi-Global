@@ -5,6 +5,12 @@ const fs = require('fs'), path = require('path'), os = require('os');
 const HOME = (process.env.HOME && fs.existsSync(path.join(process.env.HOME, 'news-project'))) ? process.env.HOME : path.join(__dirname, '..', '..', '..');
 const FILE = path.join(HOME, 'news-project', 'news-data', 'state', 'feature-flags.json');
 const DEFAULTS = { public_rest: true, web_search_api: false, ui_gate: true };
+// [R12-A] 每端点开关 + 每 IP 端点限流(次/分, 0/缺省=用全局 api 限流)
+const API_ENDPOINTS = ['news','news_latest','news_item','stories','stories_search','trending','sources','media','images','search','status','categories'];
+const API_DEFAULTS = Object.assign({ public_rest: true, web_search_api: false, ui_gate: true },
+  { api_endpoints: Object.fromEntries(API_ENDPOINTS.map(e => [e, true])), api_rpm: { news: 30, trending: 40, stories: 60, search: 10 } });
+DEFAULTS.api_endpoints = API_DEFAULTS.api_endpoints;
+DEFAULTS.api_rpm = API_DEFAULTS.api_rpm;
 let cache = { at: 0, v: Object.assign({}, DEFAULTS) };
 function flags() {
   if (Date.now() - cache.at < 3000) return cache.v;

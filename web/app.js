@@ -37,13 +37,13 @@ const AI_HINT = null;                            // AI 永不进本进程
 // ---- 简单限速（内存; 进程重启即清零——可接受） ----
 const RATE = { api: { n: 120, windowMs: 60000 }, mcp: { n: 60, windowMs: 60000 } };
 const hits = new Map();
-function rateLimited(bucket, ip) {
+function rateLimited(bucket, ip, nOpt, winOpt) {
   const now = Date.now();
   const key = bucket + '|' + ip;
   const rec = hits.get(key);
-  if (!rec || now > rec.reset) { hits.set(key, { n: 1, reset: now + RATE[bucket].windowMs }); return false; }
+  if (!rec || now > rec.reset) { hits.set(key, { n: 1, reset: now + (winOpt || RATE[bucket].windowMs) }); return false; }
   rec.n += 1;
-  return rec.n > RATE[bucket].n;
+  return rec.n > (nOpt || RATE[bucket].n);
 }
 
 // ---- 请求日志（脱敏: 不记 query 里的 token; 不记 body） ----
@@ -112,12 +112,14 @@ async function handleAdmin(req, res, url, sess) {
   if ((m = p.match(/^\/mcp\/tokens\/(\d+)$/)) && req.method === 'POST') {
     const chunks = []; for await (const c of req) chunks.push(c);
     let body = {}; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
+    if (body.action === 'scopes') return ok(auth.setMcpTokenScopes(+m[1], body.scopes));   // [R12-B]
     return ok(auth.mcpTokenAction(+m[1], body.action));
   }
+
   if (p === '/mcp/tokens/create' && req.method === 'POST') {
     const chunks = []; for await (const c of req) chunks.push(c);
     let body = {}; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
-    return ok(auth.createMcpToken(body.name));
+    return ok(auth.createMcpToken(body.name, body.scopes));
   }
   if (p === '/users') return ok({ results: auth.listUsers() });
   if (p === '/users/create' && req.method === 'POST') {
@@ -197,7 +199,9 @@ async function handleAdmin(req, res, url, sess) {
     let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
     const cur = flags.flags();
     const nw = b.toggle ? Object.assign({}, cur, { [b.toggle]: !cur[b.toggle] })
-      : { public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate };
+      : Object.assign({ public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate },
+        b.api_endpoints ? { api_endpoints: Object.fromEntries(Object.entries(b.api_endpoints).filter(([k, v]) => typeof v === 'boolean')) } : {},
+        b.api_rpm ? { api_rpm: Object.fromEntries(Object.entries(b.api_rpm).filter(([k, v]) => Number.isFinite(+v) && +v >= 0).map(([k, v]) => [k, +v])) } : {});
     try {
       require('fs').mkdirSync(require('path').dirname(flags.FILE), { recursive: true });
       require('fs').writeFileSync(flags.FILE, JSON.stringify(nw, null, 2));
@@ -245,6 +249,29 @@ async function handleApi(req, res, url, ip) {
   const p = url.pathname.replace(/^\/api/, '');
   const FLAGS = flags.flags();
   if (!FLAGS.public_rest && p !== '/health' && !p.startsWith('/auth/')) return send(res, 403, { error: 'rest disabled by admin' });   // [R11-P3]
+  // [R12-A] 端点级闸门: FLAGS.api_endpoints[name]===false → 403; FLAGS.api_rpm[name] → 每 IP 独立限流
+  const EN = (() => {
+    if (p === '/news' || p.startsWith('/news/search') || p.startsWith('/news?q')) return 'news';
+    if (p.startsWith('/news/latest')) return 'news_latest';
+    if (/^\/news\/\d+/.test(p)) return 'news_item';
+    if (p.startsWith('/stories/search')) return 'stories_search';
+    if (p.startsWith('/stories')) return 'stories';
+    if (p.startsWith('/trending')) return 'trending';
+    if (p.startsWith('/sources')) return 'sources';
+    if (p.startsWith('/media')) return 'media';
+    if (p.startsWith('/images')) return 'images';
+    if (p === '/search') return 'search';
+    if (p === '/status') return 'status';
+    if (p === '/categories') return 'categories';
+    return null;
+  })();
+  if (EN && FLAGS.api_endpoints && FLAGS.api_endpoints[EN] === false) {
+    send(res, 403, { error: '该端点已由管理员关闭: /api' + p }); done(403); return;
+  }
+  if (EN) {
+    const rpm = (FLAGS.api_rpm || {})[EN];
+    if (rpm && rateLimited('e:' + EN, ip, +rpm, 60000)) { send(res, 429, { error: '端点限流: /api' + p + ' ≤ ' + rpm + '/分' }); done(429); return; }
+  }
   const ok = (obj) => send(res, 200, obj);
   if (p === '/health') return ok({ ...newsdb.health(), time: new Date().toISOString() });
   if (p === '/status') return ok({ ...newsdb.health(), disk: newsdb.diskStatus(),
@@ -458,6 +485,14 @@ function bearerOk(req) {
   try { return auth.checkMcpBearer(token); } catch { return false; }
 }
 
+function mcpAuth(req) {                                   // [R12-B] token 分权: 返回 {id, scopes}
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Bearer ')) return null;
+  const token = h.slice(7);
+  if (MCP_TOKEN && token === MCP_TOKEN) return { id: 0, scopes: '*' };   // bootstrap = 全权
+  try { return auth.resolveMcpBearer(token); } catch { return null; }
+}
+
 const server = http.createServer(async (req, res) => {
   const t0 = Date.now();
   const ip = (req.socket.remoteAddress || '').replace('::ffff:', '');
@@ -472,7 +507,8 @@ const server = http.createServer(async (req, res) => {
       res.end(); done(301); return;
     }
     if (url.pathname === '/mcp') {
-      if (!bearerOk(req)) {
+      const BEARER = mcpAuth(req);
+      if (!BEARER) {
         res.writeHead(401, { 'WWW-Authenticate': 'Bearer realm="mcp"', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify({ error: 'unauthorized' }));
         done(401); return;
@@ -487,6 +523,14 @@ const server = http.createServer(async (req, res) => {
         for await (const c of req) { size += c.length; if (size > 256 * 1024) { send(res, 413, { error: 'body too large' }); done(413); return; } chunks.push(c); }
         try { parsedBody = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
         catch { send(res, 400, { error: 'invalid json' }); done(400); return; }
+      }
+      // [R12-B] token 分权: tools/call 检查 scopes ('*'=全权; 逗号清单=限工具)
+      if (parsedBody && parsedBody.method === 'tools/call') {
+        const tool = parsedBody.params && parsedBody.params.name;
+        const sc = (BEARER && BEARER.scopes) || '*';
+        if (tool && !(sc === '*' || String(sc).split(',').includes(tool))) {
+          send(res, 403, { error: '该 token 无权调用工具: ' + tool + ' (scopes=' + sc + ')' }); done(403); return;
+        }
       }
       if (!mcpHandler) { send(res, 503, { error: 'mcp unavailable' }); done(503); return; }
       await mcpHandler(req, res, parsedBody);

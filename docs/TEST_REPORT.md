@@ -200,3 +200,8 @@ web.log 复盘: 用户 login POST 全 200(密码正确) 但随后 / 恒 302; cur
 修复: 强制 HTTPS (x-forwarded-proto http→301 https)。实测 http→301 ✓ 登录带cookie /→200 ✓。
 ## 用户开关保存异常排查 (2026-09-11)
 根因链: ① app-ui 设置页按钮未绑 onclick (r11 卡片漏 wiring) → 点击零动作无请求; ② /api/admin/flags GET 走 3s 缓存 → 保存后刷新太快显示旧值; ③ 多标签页旧 CSRF 成功混入。修复: 按钮 onclick="saveFlags()" + saveFlags 保存后回读核对(toast 显示实际生效值) + flags.js 新增 fresh()/GET 绕过缓存。实测 curl: POST true → GET true → /api/news 未登录 200 ✓。
+## R12 精细化控制 (2026-09-11)
+A 端点闸门+限流: flags.fresh() 增 api_endpoints/api_rpm; handleApi 每 IP/端点独立桶; POST /flags 接收两个明细对象。
+B token 分权: mcp_tokens +scopes(默认*,幂等迁移); resolveMcpBearer/setMcpTokenScopes; /mcp tools/call 拦截 403 '该 token 无权调用工具'; admin 路由 POST /mcp/tokens/:id action=scopes; UI: token 表加权限列+行内 scopes 编辑, 创建弹窗带 scopes。
+C adminApi 403 → 静默刷新 CSRF 重试一次(多标签页误报)。
+自测: 主 token '*' 12 工具全通; 限制示例 token 只许 search_news,web_search → 允许列表 200, read_url 403 ✓; 无/错 token 401 ✓; 关 stories→403/明确文案, news 200 ✓; news rpm=3 连打5次 #3 起 429 ✓; 已恢复默认(全部开放, rpm news30/trending40/stories60/search10)。

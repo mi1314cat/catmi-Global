@@ -28,9 +28,13 @@ function db() {
       id INTEGER PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT UNIQUE NOT NULL,
       token_prefix TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, revoked_at TEXT,
       created_at TEXT NOT NULL, last_used_at TEXT, call_count INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS mcp_scopes_migrated(migrated INTEGER)
       CREATE TABLE IF NOT EXISTS audit_log(
       id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT, action TEXT, detail TEXT)`);
   }
+  // [R12-B] token 分权迁移(幂等): scopes 默认 '*' = 全部工具; 回滚: ALTER TABLE mcp_tokens DROP COLUMN scopes
+  try { _db.exec("ALTER TABLE mcp_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT '*'"); }
+  catch (e) { if (!String(e.message).includes('duplicate column')) throw e; }
   return _db;
 }
 
@@ -159,20 +163,32 @@ function pruneSessions() {
 // ---------- MCP Token ----------
 function sha256(s) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
-function createMcpToken(name) {
+function setMcpTokenScopes(id, scopes) {
+  let sc = String(scopes || '*').trim() || '*';
+  if (sc !== '*' && !/^[a-z_]+(,[a-z_]+)*$/.test(sc)) return { error: 'scopes 格式: * 或 tool1,tool2' };
+  const t = db().prepare('SELECT id, name FROM mcp_tokens WHERE id=?').get(+id);
+  if (!t) return { error: 'token 不存在' };
+  db().prepare('UPDATE mcp_tokens SET scopes=? WHERE id=?').run(sc, +id);
+  audit('admin', 'mcp-token-scopes', t.name + ' → ' + sc);
+  return { ok: true, id: +id, scopes: sc };
+}
+
+function createMcpToken(name, scopes) {
   name = String(name || '').trim().slice(0, 40) || 'unnamed';
   const token = 'gi_' + crypto.randomBytes(24).toString('base64url');
   const prefix = token.slice(0, 11);
   try {
-    db().prepare('INSERT INTO mcp_tokens(name,token_hash,token_prefix,enabled,created_at) VALUES(?,?,?,1,?)')
-      .run(name, sha256(token), prefix, nowIso());
+    let sc = String(scopes || '*').trim() || '*';
+    if (!/^\*(,[a-z_]+)*(\/)?$/.test(sc) && !/^[a-z_]+(,[a-z_]+)*$/.test(sc)) return { error: 'scopes 格式: * 或 tool1,tool2' };
+    db().prepare('INSERT INTO mcp_tokens(name,token_hash,token_prefix,scopes,enabled,created_at) VALUES(?,?,?,?,1,?)')
+      .run(name, sha256(token), prefix, sc, nowIso());
     audit('admin', 'mcp-token-create', name);
     return { ok: true, token, prefix, note: '完整 Token 仅本次显示，数据库只存哈希' };
   } catch (e) { return { error: e.message }; }
 }
 
 function listMcpTokens() {
-  return db().prepare(`SELECT id, name, token_prefix, enabled, revoked_at IS NOT NULL AS revoked,
+  return db().prepare(`SELECT id, name, token_prefix, scopes, enabled, revoked_at IS NOT NULL AS revoked,
     created_at, last_used_at, call_count FROM mcp_tokens ORDER BY id DESC`).all();
 }
 
@@ -198,17 +214,16 @@ function mcpTokenAction(id, action) {
 }
 
 // MCP Bearer 校验: 先查 DB token（启用未撤销）, 再查 env bootstrap token
-function checkMcpBearer(bearer) {
-  if (!bearer) return false;
-  const h = sha256(bearer);
-  const t = db().prepare('SELECT id FROM mcp_tokens WHERE token_hash=? AND enabled=1 AND revoked_at IS NULL').get(h);
+function resolveMcpBearer(bearer) {
+  if (!bearer) return null;
+  const t = db().prepare('SELECT id, scopes FROM mcp_tokens WHERE token_hash=? AND enabled=1 AND revoked_at IS NULL').get(sha256(bearer));
   if (t) {
-    db().prepare('UPDATE mcp_tokens SET last_used_at=?, call_count=call_count+1 WHERE id=?')
-      .run(nowIso(), t.id);
-    return true;
+    db().prepare('UPDATE mcp_tokens SET last_used_at=?, call_count=call_count+1 WHERE id=?').run(nowIso(), t.id);
+    return { id: t.id, scopes: t.scopes || '*' };
   }
-  return false;
+  return null;
 }
+function checkMcpBearer(bearer) { return !!resolveMcpBearer(bearer); }
 
 function audit(actor, action, detail) {
   try {
@@ -222,4 +237,5 @@ function tailAudit(n = 50) {
 
 module.exports = { db, AUTH_DB, ensureBootstrapAdmin, createUser, listUsers, setUserEnabled,
   resetUserPassword, login, getSession, logout, pruneSessions, createMcpToken, listMcpTokens,
+  resolveMcpBearer, setMcpTokenScopes,
   mcpTokenAction, checkMcpBearer, audit, tailAudit, verifyPassword, hashPassword };
