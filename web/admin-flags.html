@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>功能开关 · 全球情报</title>
+<style>body{font-family:system-ui;background:#0d1117;color:#e6edf3;display:flex;justify-content:center;padding:40px 0;margin:0}
+.c{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;width:min(94vw,520px)}
+h1{font-size:17px;margin:0 0 14px}label{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #30363d;border-radius:8px;margin:8px 0;cursor:pointer}
+button{padding:8px 14px;background:#238636;border:0;border-radius:8px;color:#fff;cursor:pointer;margin-top:8px}
+#m{font-size:13px;color:#3fb950;min-height:16px;margin-top:10px}</style></head><body><div class="c"><h1>⚙️ 功能开关</h1>
+<label><input type="checkbox" id="public_rest">公开 REST API（/api/news 等，无钥匙）</label>
+<label><input type="checkbox" id="web_search_api">允许未登录使用 /api/search 实时搜索（不建议）</label>
+<label><input type="checkbox" id="ui_gate">Web 登录门（未登录跳 /login.html）</label>
+<button onclick="save()">保存</button><div id="m"></div></div>
+<script>async function load(){const r=await fetch('/api/admin/flags');if(!r.ok){document.getElementById('m').textContent='需要管理员登录';return}const d=await r.json();for(const k of ['public_rest','web_search_api','ui_gate'])document.getElementById(k).checked=!!d[k]}
+async function save(){const b={public_rest:public_rest.checked,web_search_api:web_search_api.checked,ui_gate:ui_gate.checked};const me=await(await fetch('/api/auth/me')).json();const r=await fetch('/api/admin/flags',{method:'POST',headers:{'Content-Type':'application/json','X-GI-CSRF':me.csrf||''},body:JSON.stringify(b)});document.getElementById('m').textContent=r.ok?'已保存':'保存失败('+r.status+')';}
+load()</script></body></html>

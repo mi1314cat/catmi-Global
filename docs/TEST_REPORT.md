@@ -191,3 +191,6 @@ flags.json 三开关(public_rest/web_search_api/ui_gate) + admin /api/admin/flag
 
 # R11-P4 源落地 (2026-09-11, seed-sources 3 新增/71 更新, 总 74)
 fed-press 21 | ecb-press 18 | cnbc-economy 28 | marketwatch-top 72 | investing-economy 10 | gnews-cn-business 34 | gnews-cn-rates 38 —— 7/7 出文。scan new 44→124。
+
+# R11-P5 收尾 (2026-09-11)
+19 查询复测(源上线 ~14h): 通胀 8→12 | 黄金 21→26 | 美联储 6→7 | ECB 31→33 | 国债收益率 2→3 | 人民币源 3→4 | 央行 34→74 | interest rate 46→48。MLF 0(月度窗口, 靠扩展搜索+cn-rates 源积累)、房价 0(已入扩展映射)。后台开关可视化页 admin-flags.html(受登录门保护)。
