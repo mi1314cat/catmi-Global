@@ -197,7 +197,7 @@ async function handleAdmin(req, res, url, sess) {
   if (p === '/flags' && req.method === 'POST') {   // [R11-P3] 后台一键开关
     const chunks = []; for await (const c of req) chunks.push(c);
     let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
-    const cur = flags.flags();
+    const cur = flags.fresh();   // [R12-5] 用真实值打底, 避免 3s 缓存旧值冲掉端点配置
     const nw = b.toggle ? Object.assign({}, cur, { [b.toggle]: !cur[b.toggle] })
       : Object.assign({ public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate },
         b.api_endpoints ? { api_endpoints: Object.fromEntries(Object.entries(b.api_endpoints).filter(([k, v]) => typeof v === 'boolean')) } : {},

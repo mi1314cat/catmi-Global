@@ -137,7 +137,7 @@ async function doLogout(){await j("/api/auth/logout",{method:"POST"});USER=null;
 async function pubOverview(){
   const [h,t]=await Promise.all([j("/api/status"),j("/api/trending?limit=6&hours=48")]);
   let x=`<h2>全球热点事件</h2>`;
-  x+=t.results.length?t.results.map(r=>`<div class="card"><div class="row"><div style="flex:1;min-width:0"><a href="#" onclick="openEvent(${r.story_id});return false">${esc(r.title)}</a></div><span class="score">${(+r.score).toFixed(1)}</span></div><div class="meta"><span class="tag hot">${r.importance==="high"?"重要":"常规"}</span><span>${r.source_count} 个来源 · ${r.article_count} 篇文章</span><span>${esc(r.category||"—")}</span><span>${ago(r.last_updated)}</span></div></div>`).join(""):'<div class="empty">暂无数据</div>';
+  x+=(t.results||[]).length?t.results.map(r=>`<div class="card"><div class="row"><div style="flex:1;min-width:0"><a href="#" onclick="openEvent(${r.story_id});return false">${esc(r.title)}</a></div><span class="score">${(+r.score).toFixed(1)}</span></div><div class="meta"><span class="tag hot">${r.importance==="high"?"重要":"常规"}</span><span>${r.source_count} 个来源 · ${r.article_count} 篇文章</span><span>${esc(r.category||"—")}</span><span>${ago(r.last_updated)}</span></div></div>`).join(""):'<div class="empty">暂无数据</div>';
   const dk=h.disk||{};
   x+=`<h2>系统状态</h2><div class="grid">
     <div class="card"><div class="meta">文章</div><b>${h.articles_total}</b><div class="meta">24 小时新增 ${h.articles_24h}</div></div>
@@ -167,7 +167,7 @@ async function runSearch(){
   $("#sres").innerHTML='<div class="empty">搜索中……</div>';
   try{
     if(SCOPE==="events"){const d=await j(`/api/stories/search?q=${encodeURIComponent(q)}&limit=20`);
-      $("#sres").innerHTML=(d.results.map(s=>`<div class="card"><div class="row"><div style="flex:1"><a href="#" onclick="openEvent(${s.id});return false">${esc(s.title)}</a></div><span class="tag hot">事件</span></div><div class="meta"><span>${s.article_count} 篇 / ${s.source_count} 个来源</span><span>${ago(s.last_updated)}</span></div></div>`).join("")||'<div class="empty">未找到相关事件</div>');return}
+      $("#sres").innerHTML=(d.results||[]).map(s=>`<div class="card"><div class="row"><div style="flex:1"><a href="#" onclick="openEvent(${s.id});return false">${esc(s.title)}</a></div><span class="tag hot">事件</span></div><div class="meta"><span>${s.article_count} 篇 / ${s.source_count} 个来源</span><span>${ago(s.last_updated)}</span></div></div>`).join("")||'<div class="empty">未找到相关事件</div>';return}
     if(SCOPE==="media"){const d=await j(`/api/media?q=${encodeURIComponent(q)}&limit=12`);
       $("#sres").innerHTML=(d.results.map(a=>`<div class="card">${a.image_main_url?`<img class="imf" src="${esc(a.image_main_url)}" loading="lazy" onerror="this.remove()">`:""}<div class="row"><div style="flex:1"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></div><span class="tag ac">媒体 · ${esc(a.source_slug)}</span></div><div class="meta"><span>${esc(a.author||"—")}</span><span>${ago(a.published_at||a.discovered_at)}</span></div></div>`).join("")||'<div class="empty">未找到相关媒体</div>');return}
     const scope=SCOPE==="web"?"web":SCOPE==="intel"?"intelligence":"all";
@@ -175,23 +175,22 @@ async function runSearch(){
     let x="";
     if(d.web){
       x+=`<h2>互联网</h2>`;
-      x+=d.web.results.length?d.web.results.map(r=>`<div class="card"><div class="row"><div style="flex:1"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a></div><span class="tag">互联网 · ${esc(r.source)}</span></div><div class="meta"><span>${r.published?ago(r.published):"时间未知"}</span><span>来自 ${esc(r.provider)}</span></div>${r.snippet?`<div class="excerpt">${esc(r.snippet)}</div>`:""}</div>`).join(""):'<div class="empty">互联网搜索无结果（全部搜索后端均失败）</div>';
+      x+=(d.web?.results||[]).length?d.web.results.map(r=>`<div class="card"><div class="row"><div style="flex:1"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a></div><span class="tag">互联网 · ${esc(r.source)}</span></div><div class="meta"><span>${r.published?ago(r.published):"时间未知"}</span><span>来自 ${esc(r.provider)}</span></div>${r.snippet?`<div class="excerpt">${esc(r.snippet)}</div>`:""}</div>`).join(""):'<div class="empty">互联网搜索无结果（全部搜索后端均失败）</div>';
       x+=`<div class="meta">搜索后端：${(d.web.providers||[]).map(p=>`<span class="tag ${p.status==="ok"?"ok":"bad"}">${esc(p.provider)} ${p.status==="ok"?"正常":"失败"}</span>`).join(" ")} · ${d.web.elapsed_ms}ms</div><div style="height:8px"></div>`}
     if(d.intelligence){
       const st=(d.intelligence.stories||{results:[]}).results, ar=(d.intelligence.articles||{results:[],total:0});
       x+=`<h2>我的情报库</h2>`;
       x+=st.length?st.map(s=>`<div class="card"><div class="row"><div style="flex:1"><a href="#" onclick="openEvent(${s.id});return false">${esc(s.title)}</a></div><span class="tag hot">事件 · 已采集</span></div><div class="meta"><span>${s.article_count} 篇 / ${s.source_count} 个来源</span><span>${ago(s.last_updated)}</span></div></div>`).join(""):"";
       x+=ar.results.map(a=>`<div class="card"><div class="row"><div style="flex:1"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a></div><span class="tag ac">情报库 · ${esc(a.source_name)}</span></div><div class="meta"><span>已采集 ${ago(a.published_at||a.discovered_at)}</span><span>${esc(a.language||"")}原文</span></div></div>`).join("");
-      if(!st.length&&!ar.results.length)x+='<div class="empty">情报库暂无匹配（采集为持续累积）</div>'}
+      if(!st.length&&!(ar.results||[]).length)x+='<div class="empty">情报库暂无匹配（采集为持续累积）</div>'}
     $("#sres").innerHTML=x}
   catch(e){$("#sres").innerHTML=`<div class="empty">搜索失败：${esc(e.message)}</div>`}}
 
 /* ============ 事件 ============ */
 async function pageEvents(offset){cur.offset=offset||0;
   const d=await j(`/api/stories?limit=20&offset=${cur.offset}`);
-  $("#main").innerHTML=(d.results.map(s=>`<div class="card"><div class="row"><div style="flex:1"><a href="#" onclick="openEvent(${s.id});return false">${esc(s.title)}</a></div>${s.heat?`<span class="score">${(+s.heat).toFixed(2)}</span>`:""}</div><div class="meta"><span class="tag hot">${s.importance==="high"?"重要":"常规"}</span><span>${s.article_count} 篇 / ${s.source_count} 个来源</span><span>${esc(s.category||"—")}</span><span>${ago(s.last_updated)}</span></div><div class="meta">${(s.articles||[]).slice(0,4).map(a=>`<span>· ${esc(a.source_name)}</span>`).join("")}</div></div>`).join("")||'<div class="empty">暂无数据</div>')+pg(d,"pageEvents")}
-async function openEvent(id){
-  $("#main").innerHTML='<div class="empty">加载中……</div>';
+  $("#main").innerHTML=(d.results||[]).map(s=>`<div class="card"><div class="row"><div style="flex:1"><a href="#" onclick="openEvent(${s.id});return false">${esc(s.title)}</a></div>${s.heat?`<span class="score">${(+s.heat).toFixed(2)}</span>`:""}</div><div class="meta"><span class="tag hot">${s.importance==="high"?"重要":"常规"}</span><span>${s.article_count} 篇 / ${s.source_count} 个来源</span><span>${esc(s.category||"—")}</span><span>${ago(s.last_updated)}</span></div><div class="meta">${(s.articles||[]).slice(0,4).map(a=>`<span>· ${esc(a.source_name)}</span>`).join("")}</div></div>`).join("")||'<div class="empty">暂无数据</div>'+pg(d,"pageEvents")}
+async function openEvent(id){  $("#main").innerHTML='<div class="empty">加载中……</div>';
   const s=await j(`/api/stories/${id}`);
   const tl=(s.timeline||[]).map(t=>`<tr><td style="white-space:nowrap">${esc((t.at||"").slice(0,16))}</td><td>${esc(t.source)}</td><td><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title)}</a></td></tr>`).join("");
   $("#main").innerHTML=`<div class="card"><div class="meta"><span class="tag hot">事件 #${s.id}</span><span>${s.importance==="high"?"重要":"常规"}</span></div>
@@ -222,7 +221,7 @@ async function pageSystem(){
     ${L("网络搜索",(ws.primary||"—"),true)}
     ${L("情报库搜索",`FTS5 全文检索 · ${h.articles_total} 篇`,h.articles_total>0)}
     ${L("来源",`${h.sources_active} 个启用中`,h.sources_active>0)}
-    <tr><td><b>24h 最热事件</b></td><td>${t.results.length?esc(t.results[0].title):"暂无数据"}</td></tr></table></div>
+    <tr><td><b>24h 最热事件</b></td><td>${(t.results||[]).length?esc(t.results[0].title):"暂无数据"}</td></tr></table></div>
     <h2>MCP 工具</h2><div class="card"><div class="meta">${(mcp.tools||[]).map(x=>`<span class="tag ac">${esc(x)}</span>`).join(" ")||'<span class="tag bad">未配置</span>'}</div></div>
     <h2>搜索后端</h2><div class="card"><div class="meta">主路径：${esc(ws.primary||"—")}</div><div class="meta">网络搜索零 API Key 可用；SearXNG 可作为主后端接入（env.local 一行配置）</div></div>`}
 
@@ -265,7 +264,7 @@ async function admCollector(){
 async function admSources(){
   const list=await j("/api/sources");
   $("#main").innerHTML=`<div class="card tw"><table><tr><th>来源</th><th>类型</th><th>语言</th><th>状态</th><th>24h</th><th>失败</th><th>操作</th></tr>
-    ${list.results.map(x=>`<tr><td><b>${esc(x.name)}</b><div class="meta">${esc(x.slug)}</div></td><td><span class="tag">${esc(x.kind)}</span></td><td>${esc(x.language)}</td>
+    ${(list.results||[]).map(x=>`<tr><td><b>${esc(x.name)}</b><div class="meta">${esc(x.slug)}</div></td><td><span class="tag">${esc(x.kind)}</span></td><td>${esc(x.language)}</td>
     <td>${x.disabled?'<span class="tag bad">已停用</span>':(x.consecutive_failures>0?`<span class="tag hot">${x.consecutive_failures} 连续失败</span>`:'<span class="tag ok">正常</span>')}</td>
     <td>${x.articles_24h||0}</td><td>${x.error_count||0}</td>
     <td style="white-space:nowrap"><button style="padding:3px 8px;font-size:12px" onclick="srcTest(${x.id},'${esc(x.slug)}')">测试</button>
@@ -293,7 +292,7 @@ async function admMcp(){
     <div class="meta"><code>{"mcpServers":{"global-intelligence":{"url":"https://myp.micsdic.dpdns.org/mcp","headers":{"Authorization":"Bearer &lt;你的Token&gt;"}}}}</code></div></div>
     <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class=pri onclick="tokCreate()">创建 Token</button><button onclick="mcpTest()">测试 MCP</button></div></div>
     <h2>Token 管理</h2><div class="card tw"><table><tr><th>名称</th><th>状态</th><th>权限(scopes)</th><th>操作</th></tr>
-    ${tk.results.length?tk.results.map(t=>`<tr><td><b>${esc(t.name)}</b><div class="meta">${esc(t.token_prefix)}…</div></td>
+    ${(tk.results||[]).length?tk.results.map(t=>`<tr><td><b>${esc(t.name)}</b><div class="meta">${esc(t.token_prefix)}…</div></td>
     <td>${t.revoked?'<span class="tag bad">已撤销</span>':(t.enabled?'<span class="tag ok">启用</span>':'<span class="tag bad">停用</span>')}</td>
     <td>${t.revoked?'<span class="meta">全部(*)</span>':`<span id="scr-${t.id}" class="meta">${(t.scopes||"*")==="*"?"全部工具":esc(t.scopes||"*")}</span> <button style="padding:3px 8px;font-size:12px" onclick="openScopesModal(${t.id},(t.scopes||'*'))">修改</button>`}</td>
     <td style="white-space:nowrap">${t.revoked?`<button style="padding:3px 8px;font-size:12px" onclick="tokAct(${t.id},'enable')">恢复</button><button class=danger style="padding:3px 8px;font-size:12px" onclick="tokAct(${t.id},'delete')">删除</button>`:`<button class=danger style="padding:3px 8px;font-size:12px" onclick="tokAct(${t.id},'revoke')">撤销</button>`}</td></tr>`).join(""):'<tr><td colspan="6">暂无 Token，点击上方「创建 Token」</td></tr>'}</table></div>
