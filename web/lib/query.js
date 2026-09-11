@@ -7,14 +7,36 @@ const websearch = require('./websearch');
 async function search(query, opts = {}) {
   const scope = ['web', 'intelligence', 'all'].includes(opts.scope) ? opts.scope : 'all';
   const limit = Math.min(Math.max(1, +opts.limit || 10), 20);
-  const out = { query, scope, limit };
+  const out = { query, scope, limit, expansions: [] };
   const jobs = [];
+  // [R11-P4] 经济词 zh→en 扩展: 仅命中经济关键词时追加 ≤2 个英文同义查询(结果进 out.web 同池, 标注 expanded)
+  const ECON_MAP = [
+    ['美联储', 'Federal Reserve FOMC rate decision'], ['降息', 'rate cut central bank'],
+    ['加息', 'rate hike central bank'], ['央行', 'central bank monetary policy'],
+    ['货币政策', 'monetary policy'], ['非农', 'US nonfarm payrolls jobs report'],
+    ['房地产', 'China property market'], ['人民币', 'yuan CNY exchange rate'],
+    ['通胀', 'inflation CPI'], ['经济衰退', 'global recession'],
+    ['国债', 'government bond yield'], ['房价', 'China housing prices'],
+  ];
+  const extras = [];
+  for (const [zh, en] of ECON_MAP) {
+    if (query.includes(zh)) { extras.push(en); if (extras.length >= 2) break; }
+  }
+  out.expansions = extras;
   if (scope === 'web' || scope === 'all') {
     jobs.push(websearch.webSearch(query, { limit: scope === 'all' ? Math.min(limit, 10) : limit,
       time_range: opts.time_range, language: opts.language, region: opts.region,
       category: opts.category, page: opts.page })
       .then((r) => { out.web = r; })
       .catch((e) => { out.web = { results: [], providers: [{ provider: 'all', status: 'error', error: String(e.message).slice(0, 120) }] }; }));
+    for (const ex of extras) {
+      jobs.push(websearch.webSearch(ex, { limit: 5, time_range: opts.time_range, language: 'en', region: opts.region, category: opts.category })
+        .then((r) => {
+          if (!out.web) return;
+          for (const x of (r.results || [])) { x.expanded_from = ex; out.web.results.push(x); }
+        })
+        .catch(() => { /* 扩展查询失败不致命 */ }));
+    }
   }
   if (scope === 'intelligence' || scope === 'all') {
     jobs.push(new Promise((resolve) => {
