@@ -204,7 +204,7 @@ async function handleAdmin(req, res, url, sess) {
       return ok(nw);
     } catch (e) { return send(res, 500, { error: 'flag write failed: ' + e.message, file: flags.FILE }); }
   }
-  if (p === '/flags') return ok(flags.flags());   // [R11-P3]
+  if (p === '/flags') return ok(flags.fresh());   // [R11-P3] 后台读取绕过缓存, 永远回真实状态
   if (p === '/settings') return ok(adminsvc.settings());
   return send(res, 404, { error: 'unknown admin endpoint' });
 }

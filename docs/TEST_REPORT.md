@@ -198,3 +198,5 @@ fed-press 21 | ecb-press 18 | cnbc-economy 28 | marketwatch-top 72 | investing-e
 ## 用户无法登录排查 (2026-09-11)
 web.log 复盘: 用户 login POST 全 200(密码正确) 但随后 / 恒 302; curl 全链路正常 → Secure cookie 在 http 下被浏览器丢弃(rateLimited 计数同源也撞车: 429 on health/categories ×74, 127.0.0.1 全局桶)。
 修复: 强制 HTTPS (x-forwarded-proto http→301 https)。实测 http→301 ✓ 登录带cookie /→200 ✓。
+## 用户开关保存异常排查 (2026-09-11)
+根因链: ① app-ui 设置页按钮未绑 onclick (r11 卡片漏 wiring) → 点击零动作无请求; ② /api/admin/flags GET 走 3s 缓存 → 保存后刷新太快显示旧值; ③ 多标签页旧 CSRF 成功混入。修复: 按钮 onclick="saveFlags()" + saveFlags 保存后回读核对(toast 显示实际生效值) + flags.js 新增 fresh()/GET 绕过缓存。实测 curl: POST true → GET true → /api/news 未登录 200 ✓。

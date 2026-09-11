@@ -85,7 +85,7 @@ const PUB_TABS=[["overview","概览"],["search","搜索"],["events","事件"],["
 async function j(u,o){const r=await fetch(u,o);if(!o||o.nothrow||r.ok)return r.json();throw new Error("HTTP "+r.status)}
 async function adminApi(u,opt){opt=opt||{};opt.headers=Object.assign({"X-GI-CSRF":CSRF,"Content-Type":"application/json"},opt.headers||{});
   const r=await fetch(u,opt);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||("HTTP "+r.status));return d}
-async function saveFlags(){const b={};["public_rest","web_search_api","ui_gate"].forEach(k=>{const el=document.getElementById("flag-"+k);if(el)b[k]=el.checked});try{await adminApi("/api/admin/flags",{method:"POST",body:JSON.stringify(b)});toast("功能开关已保存")}catch(e){toast("保存失败: "+(e.message||e))}}
+async function saveFlags(){const b={};["public_rest","web_search_api","ui_gate"].forEach(k=>{const el=document.getElementById("flag-"+k);if(el)b[k]=el.checked});try{const saved=await adminApi("/api/admin/flags",{method:"POST",body:JSON.stringify(b)});["public_rest","web_search_api","ui_gate"].forEach(k=>{const el=document.getElementById("flag-"+k);if(el)el.checked=!!saved[k]});toast("已保存并生效: 公开API="+(saved.public_rest?"开":"关")+" 未登录搜索="+(saved.web_search_api?"开":"关")+" 登录门="+(saved.ui_gate?"开":"关"))}catch(e){toast("保存失败: "+(e.message||e))}}
 function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
 function copy(text,label){navigator.clipboard.writeText(text).then(()=>toast((label||"内容")+"已复制")).catch(()=>toast("复制失败，请手动选择"))}
 function agoClock(){$("#clock").textContent=new Date().toLocaleTimeString("zh-CN")}
@@ -398,7 +398,7 @@ async function admSettings(){
     <label style="display:flex;align-items:center;gap:10px;padding:8px 0"><input type="checkbox" id="flag-public_rest" ${fl.public_rest?"checked":""}>公开 REST API</label>
     <label style="display:flex;align-items:center;gap:10px;padding:8px 0"><input type="checkbox" id="flag-web_search_api" ${fl.web_search_api?"checked":""}>未登录可用 /api/search</label>
     <label style="display:flex;align-items:center;gap:10px;padding:8px 0"><input type="checkbox" id="flag-ui_gate" ${fl.ui_gate?"checked":""}>Web 登录门</label>
-    <button id="flags-save" style="padding:8px 16px;background:#238636;border:0;border-radius:8px;color:#fff;cursor:pointer">保存开关</button></div>
+    <button id="flags-save" onclick="saveFlags()" style="padding:8px 16px;background:#238636;border:0;border-radius:8px;color:#fff;cursor:pointer">保存开关</button></div>
     <div class="card"><div class="row"><b style="font-size:14px">系统设置</b><span class="tag hot">只读展示</span></div>
     <div class="meta">配置经服务器 env.local（权限 600）修改并重启后生效；本页不做网页改写（安全考虑：避免网页层直接写敏感配置文件）。</div></div>
     <div class="card tw"><table><tr><th>项目</th><th>值</th></tr>

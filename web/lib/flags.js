@@ -13,4 +13,5 @@ function flags() {
   cache.at = Date.now();
   return cache.v;
 }
-module.exports = { flags, FILE, DEFAULTS };
+function fresh(){try{const v=Object.assign({},DEFAULTS,JSON.parse(fs.readFileSync(FILE,'utf8')));cache.v=v;cache.at=Date.now();return v}catch{cache.v=Object.assign({},DEFAULTS);cache.at=Date.now();return cache.v}}
+module.exports = { flags, fresh, FILE, DEFAULTS };
