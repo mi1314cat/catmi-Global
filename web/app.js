@@ -201,7 +201,9 @@ async function handleAdmin(req, res, url, sess) {
     const nw = b.toggle ? Object.assign({}, cur, { [b.toggle]: !cur[b.toggle] })
       : Object.assign({ public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate },
         b.api_endpoints ? { api_endpoints: Object.fromEntries(Object.entries(b.api_endpoints).filter(([k, v]) => typeof v === 'boolean')) } : {},
-        b.api_rpm ? { api_rpm: Object.fromEntries(Object.entries(b.api_rpm).filter(([k, v]) => Number.isFinite(+v) && +v >= 0).map(([k, v]) => [k, +v])) } : {});
+        b.api_rpm ? { api_rpm: Object.fromEntries(Object.entries(b.api_rpm).filter(([k, v]) => Number.isFinite(+v) && +v >= 0).map(([k, v]) => [k, Math.min(Math.round(+v), 60)])) } : {},
+        Number.isFinite(+b.api_rpm_global) && +b.api_rpm_global > 0 ? { api_rpm_global: Math.min(Math.round(+b.api_rpm_global), 300) } : {},
+        Number.isFinite(+b.mcp_rpm) && +b.mcp_rpm > 0 ? { mcp_rpm: Math.min(Math.round(+b.mcp_rpm), 120) } : {});
     try {
       require('fs').mkdirSync(require('path').dirname(flags.FILE), { recursive: true });
       require('fs').writeFileSync(flags.FILE, JSON.stringify(nw, null, 2));
@@ -269,8 +271,9 @@ async function handleApi(req, res, url, ip) {
     send(res, 403, { error: '该端点已由管理员关闭: /api' + p }); done(403); return;
   }
   if (EN) {
+    const SESSB = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);   // [R12] 登录跳过限流
     const rpm = (FLAGS.api_rpm || {})[EN];
-    if (rpm && rateLimited('e:' + EN, ip, +rpm, 60000)) { send(res, 429, { error: '端点限流: /api' + p + ' ≤ ' + rpm + '/分' }); done(429); return; }
+    if (rpm && !SESSB && rateLimited('e:' + EN, ip, +rpm, 60000)) { send(res, 429, { error: '端点限流: /api' + p + ' ≤ ' + rpm + '/分' }); done(429); return; }
   }
   const ok = (obj) => send(res, 200, obj);
   if (p === '/health') return ok({ ...newsdb.health(), time: new Date().toISOString() });
@@ -317,7 +320,7 @@ async function handleApi(req, res, url, ip) {
     const F = flags.flags();
     const sessS = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);
     if (!F.web_search_api && !sessS && !bearerOk(req)) { send(res, 401, { error: 'authentication required for live search' }); return; }
-    if (rateLimited('api', ip)) { send(res, 429, { error: 'rate limited' }); done(429); return; }
+    if (!sessS && rateLimited('api', ip, Math.min(+FLAGS.api_rpm_global || 120, 300), 60000)) { send(res, 429, { error: 'rate limited' }); done(429); return; }   // [R12] 登录跳过
     const r = await querysvc.search(q.get('q') || '', {
       scope: q.get('scope'), time_range: q.get('time_range'), language: q.get('language'),
       region: q.get('region'), category: q.get('category'), limit: q.get('limit'),
@@ -516,7 +519,7 @@ const server = http.createServer(async (req, res) => {
       if (req.headers.origin && req.headers.origin !== SITE_ORIGIN) {
         send(res, 403, { error: 'origin rejected' }); done(403); return;
       }
-      if (rateLimited('mcp', ip)) { send(res, 429, { error: 'rate limited' }); done(429); return; }
+      if (rateLimited('mcp', ip, Math.min(+flags.flags().mcp_rpm || 60, 120), 60000)) { send(res, 429, { error: 'rate limited (mcp)' }); done(429); return; }
       let parsedBody;
       if (req.method === 'POST') {
         const chunks = []; let size = 0;
@@ -572,7 +575,9 @@ const server = http.createServer(async (req, res) => {
       done(res.statusCode); return;
     }
     if (url.pathname.startsWith('/api/')) {
-      if (rateLimited('api', ip)) { send(res, 429, { error: 'rate limited' }); done(429); return; }
+      const FLG = flags.flags();
+      const SESSG = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);   // [R12] 登录用户不受限流
+      if (!SESSG && rateLimited('api', ip, Math.min(+FLG.api_rpm_global || 120, 300), 60000)) { send(res, 429, { error: 'rate limited' }); done(429); return; }
       await handleApi(req, res, url, ip);
       done(res.statusCode);
       return;

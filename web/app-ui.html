@@ -413,6 +413,7 @@ async function testAi(){
 const EP_ST={v:null,r:null};
 function FLAGS_EndOn(k){return EP_ST.v ? EP_ST.v[k]!==false : true}
 function FLAGS_EndRpm(k){return EP_ST.r ? (EP_ST.r[k]??"") : ""}
+async function saveGlobalLimits(){const b={api_rpm_global:+(document.getElementById("g-api").value||120),mcp_rpm:+(document.getElementById("g-mcp").value||60)};try{const r=await adminApi("/api/admin/flags",{method:"POST",body:JSON.stringify(b)});toast("已保存(超限自动截到最大): 公开API "+(r.api_rpm_global||120)+"/分 · MCP "+(r.mcp_rpm||60)+"/分")}catch(e){toast("保存失败: "+(e.message||e))}}
 function saveEndpoints(){const b={api_endpoints:{},api_rpm:{}};["news","news_latest","news_item","stories","stories_search","trending","sources","media","images","search","status","categories"].forEach(k=>{const el=document.getElementById("ep-"+k);if(el)b.api_endpoints[k]=el.checked;const r=document.getElementById("rpm-"+k);if(r&&r.value!=="")b.api_rpm[k]=+r.value});(async()=>{try{const saved=await adminApi("/api/admin/flags",{method:"POST",body:JSON.stringify(b)});toast("端点设置已保存: 关闭 "+Object.entries(saved.api_endpoints||{}).filter(([k,v])=>!v).map(([k])=>"/api/"+k).join(" ")||"无关闭项")}catch(e){toast("保存失败: "+(e.message||e))}})()}
 async function admSettings(){
   const s=await adminApi("/api/admin/settings");
@@ -424,6 +425,11 @@ async function admSettings(){
     <label style="display:flex;align-items:center;gap:10px;padding:8px 0"><input type="checkbox" id="flag-web_search_api" ${fl.web_search_api?"checked":""}>未登录可用 /api/search</label>
     <label style="display:flex;align-items:center;gap:10px;padding:8px 0"><input type="checkbox" id="flag-ui_gate" ${fl.ui_gate?"checked":""}>Web 登录门</label>
     <button id="flags-save" onclick="saveFlags()" style="padding:8px 16px;background:#238636;border:0;border-radius:8px;color:#fff;cursor:pointer">保存开关</button></div>
+    <div class="card"><div class="row"><b style="font-size:14px">全局限流</b><span class="tag ok">保存即时生效 · 超上限自动截到最大</span></div>
+    <div class="meta">登录用户(含你自己)不受端点/公开限流；匿名访问才计数。</div>
+    <label style="display:flex;align-items:center;gap:10px;padding:6px 0">公开 API 全局 <input type="number" id="g-api" min="1" max="300" value="${fl.api_rpm_global||120}" style="width:86px"> 次/分（上限 300）</label>
+    <label style="display:flex;gap:10px;align-items:center;padding:6px 0">MCP 每分钟 <input type="number" id="g-mcp" min="1" max="120" value="${fl.mcp_rpm||60}" style="width:86px"> 次/分（上限 120）</label>
+    <button id="g-save" onclick="saveGlobalLimits()" style="padding:8px 16px;background:#238636;border:0;border-radius:8px;color:#fff;cursor:pointer">保存全局限流</button></div>
     <div class="card"><div class="row"><b style="font-size:14px">端点精细控制</b><span class="tag ok">保存即时生效</span></div>
     <div class="meta">取消勾选 = 关闭该公开端点；次数/分 = 该端点每 IP 独立限流（留空=跟随全局）。</div>
     ${[["news","新闻列表"],["news_latest","最新新闻"],["news_item","单篇文章"],["stories","事件列表"],["stories_search","事件搜索"],["trending","热点"],["sources","来源"],["media","媒体"],["images","图片"],["search","实时搜索"],["status","状态"],["categories","分类"]].map(([k,l])=>`<div style="display:flex;align-items:center;gap:10px;padding:5px 0"><input type="checkbox" id="ep-${k}" ${FLAGS_EndOn(k)?"checked":""}><span style="flex:1">/api/${k} ${l}</span><input type="number" id="rpm-${k}" min="0" placeholder="∞" style="width:76px" value="${FLAGS_EndRpm(k)}"> 次/分</div>`).join("")}

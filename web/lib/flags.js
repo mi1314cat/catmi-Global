@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), os = require('os');
 // [R11] __dirname 解析(public_nodejs→上3级=用户根), worker 的 HOME 环境不可靠
 const HOME = (process.env.HOME && fs.existsSync(path.join(process.env.HOME, 'news-project'))) ? process.env.HOME : path.join(__dirname, '..', '..', '..');
 const FILE = path.join(HOME, 'news-project', 'news-data', 'state', 'feature-flags.json');
-const DEFAULTS = { public_rest: true, web_search_api: false, ui_gate: true };
+const DEFAULTS = { public_rest: true, web_search_api: false, ui_gate: true, api_rpm_global: 120, mcp_rpm: 60 };
 // [R12-A] 每端点开关 + 每 IP 端点限流(次/分, 0/缺省=用全局 api 限流)
 const API_ENDPOINTS = ['news','news_latest','news_item','stories','stories_search','trending','sources','media','images','search','status','categories'];
 const API_DEFAULTS = Object.assign({ public_rest: true, web_search_api: false, ui_gate: true },

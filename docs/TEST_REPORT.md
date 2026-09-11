@@ -205,3 +205,6 @@ A 端点闸门+限流: flags.fresh() 增 api_endpoints/api_rpm; handleApi 每 IP
 B token 分权: mcp_tokens +scopes(默认*,幂等迁移); resolveMcpBearer/setMcpTokenScopes; /mcp tools/call 拦截 403 '该 token 无权调用工具'; admin 路由 POST /mcp/tokens/:id action=scopes; UI: token 表加权限列+行内 scopes 编辑, 创建弹窗带 scopes。
 C adminApi 403 → 静默刷新 CSRF 重试一次(多标签页误报)。
 自测: 主 token '*' 12 工具全通; 限制示例 token 只许 search_news,web_search → 允许列表 200, read_url 403 ✓; 无/错 token 401 ✓; 关 stories→403/明确文案, news 200 ✓; news rpm=3 连打5次 #3 起 429 ✓; 已恢复默认(全部开放, rpm news30/trending40/stories60/search10)。
+## R12-2 登录豁免 + 全局限流可配 + 上限钳制 (2026-09-11)
+登录(含admin)跳过公开API全局限流与端点限流(匿名才计数); api_rpm_global(默认120, 上限300)/mcp_rpm(默认60, 上限120)进后台"全局限流"卡; api_rpm 每端点上限 60, 超限服务端自动截到最大。
+自测: 钳制 9999→60/300/120 ✓; trending rpm=1 登录连打5次全200 ✓; 匿名第2次 429 ✓; mcp_rpm=80 读回生效+12工具 ✓; 恢复默认120/60 ✓。
