@@ -270,11 +270,11 @@ async function handleApi(req, res, url, ip) {
     if (p === '/categories') return 'categories';
     return null;
   })();
-  if (EN && FLAGS.api_endpoints && FLAGS.api_endpoints[EN] === false) {
-    send(res, 403, { error: '该端点已由管理员关闭: /api' + p }); done(403); return;
+  const SESSB = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);   // [R12-4c] 登录用户豁免
+  if (EN && !SESSB && FLAGS.api_endpoints && FLAGS.api_endpoints[EN] === false) {
+    send(res, 403, { error: '该端点已由管理员关闭(匿名): /api' + p }); done(403); return;
   }
   if (EN) {
-    const SESSB = auth.getSession((req.headers.cookie || '').match(/gi_session=([\w-]+)/)?.[1]);   // [R12] 登录跳过限流
     const rpm = (FLAGS.api_rpm || {})[EN];
     if (rpm && !SESSB && rateLimited('e:' + EN, ip, +rpm, 60000)) { send(res, 429, { error: '端点限流: /api' + p + ' ≤ ' + rpm + '/分' }); done(429); return; }
   }
