@@ -42,7 +42,7 @@ docs/               设计与运维文档（ARCHITECTURE / DEPLOYMENT / API / DA
 # SSH 登录你的 Serv00 账号后：
 git clone https://github.com/mi1314cat/catmi-Global.git && cd catmi-Global
 
-bash serve00-init.sh check               # 环境体检（只读）
+bash serve00-init.sh wizard              # ★ 推荐新手: 交互向导（域名/证书/端口/Token 一次配完后执行 install）
 bash serve00-init.sh install             # venv + 数据目录 + python 依赖 + 服务配置
 bash serve00-init.sh install --with-cron # 需要自动采集时（默认不加，尊重平台规则）
 bash serve00-init.sh status              # 查看安装清单

@@ -31,13 +31,14 @@ PURGE_BACKUPS=0
 
 for a in "$@"; do
   case "$a" in
-    check|install|repair|status|doctor|uninstall) MODE="$a" ;;
+    check|install|repair|status|doctor|uninstall|wizard) MODE="$a" ;;
     --dry-run) DRY_RUN=1 ;;
     --with-cron) WITH_CRON=1 ;;
     --yes) ASSUME_YES=1 ;;
     --remove-cron) REMOVE_CRON=1 ;;
     --purge-backups) PURGE_BACKUPS=1 ;;
     -h|--help) MODE="help" ;;
+  wizard) MODE="wizard" ;;
     *) ;;
   esac
 done
@@ -459,6 +460,118 @@ cmd_uninstall() {
   ok "uninstall 完成"
 }
 
+# ==================== 向导模式 (一键安装引导) ====================
+# 用法: bash serve00-init.sh wizard
+#   交互式完成: 域名 → (可选)证书粘贴 → (可选)端口自动申请 → env.local+Token → 汇总
+ENV_LOCAL="$PROJECT/env.local"
+
+wizard_welcome() {
+  echo "=============================================="
+  echo "  Global Intelligence 一键安装向导 (Serv00)"
+  echo "=============================================="
+  echo "原则与 install 相同: 幂等/保守/清单回滚/不出秘密。"
+}
+
+wizard_parse_port_list() {   # 仿 serv00-play 借鉴: 解析 devil port list → 数组
+  PORT_ARRAY=""
+    # 输出行格式: <端口> <typ(tcp/udp)> <描述>; 只取描述含标记的 tcp 项
+  PORT_PORT=$(devil port list 2>/dev/null | awk -v d="$WIZ_PORT_DESC" '$2 ~ /tcp/ && $0 ~ d && $1 ~ /^[0-9]+$/ {print $1}' | tail -1)
+}
+
+wizard_get_port() {          # 借鉴 frankiejun/serv00-play getPort()
+  WIZ_PORT_DESC="${WIZ_PORT_DESC:-gi-news}"
+  wizard_parse_port_list
+  if [[ -n "$PORT_PORT" ]]; then
+    WIZ_PORT="$PORT_PORT"; return 0
+  fi
+  local rt; rt=$(devil port add tcp random "$WIZ_PORT_DESC" 2>/dev/null)
+  if [[ "$rt" == *successfully* || "$rt" == *Ok* ]]; then
+    wizard_parse_port_list
+    if [[ -n "$PORT_PORT" ]]; then WIZ_PORT="$PORT_PORT"; return 0; fi
+  fi
+  return 1
+}
+
+wizard() {
+  wizard_welcome
+  # --- 1) 域名 ---
+  local user; user=$(whoami)
+  echo ""
+  echo "① 绑定域名"
+  echo "   默认(无明显出境入口时): ${user}.serv00.net"
+  read -rp "   输入对外域名 [${user}.serv00.net]: " WIZ_DOMAIN
+  WIZ_DOMAIN=${WIZ_DOMAIN:-${user}.serv00.net}
+  # --- 2) 路线: Cloudflare 套盾 vs 直连自持证书 ---
+  echo ""
+  echo "② 证书"
+  echo "   A) 域名前面有 Cloudflare (推荐, Serv00 上免证书)"
+  echo "   B) 直连裸域名, 需要粘贴你自己的证书"
+  read -rp "   选 A/B [A]: " WIZ_SSLROUTE; WIZ_SSLROUTE=${WIZ_SSLROUTE:-A}
+  if [[ "$WIZ_SSLROUTE" == "B" ]]; then
+    CERT_DIR="$HOME/certs"; mkdir -p "$CERT_DIR"; chmod 700 "$CERT_DIR"
+    read -rp "   证书保存的域名文件名 [$WIZ_DOMAIN]: " CF; CF=${CF:-$WIZ_DOMAIN}
+    CERT_PATH="$CERT_DIR/$CF.crt"; KEY_PATH="$CERT_DIR/$CF.key"
+    echo "📄 请粘贴证书( -----BEGIN CERTIFICATE----- 开头, Ctrl+D 结束):"
+    CERT_CONTENT=$(</dev/stdin)
+    [[ -z "$CERT_CONTENT" ]] && { echo "❌ 证书内容不能为空"; return 1; }
+    echo "$CERT_CONTENT" > "$CERT_PATH"; chmod 600 "$CERT_PATH"
+    echo "🔑 请粘贴私钥( -----BEGIN PRIVATE KEY----- 或 RSA 开头, Ctrl+D 结束):"
+    KEY_CONTENT=$(</dev/stdin)
+    [[ -z "$KEY_CONTENT" ]] && { echo "❌ 私钥不能为空"; return 1; }
+    echo "$KEY_CONTENT" > "$KEY_PATH"; chmod 600 "$KEY_PATH"
+    echo "✅ 已保存(600): $CERT_PATH  $KEY_PATH"
+    echo "ℹ️  Serv00 域名 SSL 在面板 Domain details 里上传, 或用 devil ssl add; 脚本不替你操作 SSL 平台配置。"
+    unset CERT_CONTENT KEY_CONTENT   # 不驻留内存
+  else
+    echo "ℹ️  Cloudflare 路线: 边缘证书由 CF 处理, Serv00 无需证书。域名解析请指到 CF。"
+  fi
+  # --- 3) 端口(可选) ---
+  echo ""
+  echo "③ 端口"
+  echo "   Web/MCP 走 Passenger 443, 不需要额外端口。此处可选申请一个裸 TCP 端口备用。"
+  read -rp "   尝试自动申请(tcp random)? [y/N]: " WANT_PORT; WANT_PORT=${WANT_PORT:-N}
+  WIZ_PORT=""
+  if [[ "${WANT_PORT,,}" == "y" ]]; then
+    if wizard_get_port; then
+      echo "   ✅devil 自动分配端口: $WIZ_PORT (描述: $WIZ_PORT_DESC)"
+    else
+      echo "   ⚠️ 自动分配失败 — 请到面板 Ports 页手工申请, 然后重启向导或手工记录。"
+    fi
+  fi
+  # --- 4) env.local + MCP_TOKEN ---
+  echo ""
+  echo "④ env.local / MCP_TOKEN"
+  if [[ -f "$ENV_LOCAL" ]]; then
+    echo "   已有 $ENV_LOCAL 保持不动(不覆盖秘密)。"
+  else
+    read -rp "   生成随机 MCP_TOKEN 并写入? [Y/n]: " GEN_T; GEN_T=${GEN_T:-y}
+    if [[ "${GEN_T,,}" != "n" ]]; then
+      MODE="status"   # 复用环境检查
+      MCP_TOKEN_GEN=$(head -c 64 /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n') || true
+      if [ -z "$MCP_TOKEN_GEN" ]; then MCP_TOKEN_GEN=$(/usr/bin/openssl rand -hex 32 2>/dev/null || /bin/dd if=/dev/urandom bs=32 count=1 2>/dev/null | od -An -tx1 | tr -d ' \n'); fi
+      mkdir -p "$(dirname "$ENV_LOCAL")"; touch "$ENV_LOCAL"; chmod 600 "$ENV_LOCAL"
+      printf 'MCP_TOKEN=%s\n# AI/搜索 provider key 均为可选 — 见 env.local.example\n' "$MCP_TOKEN_GEN" > "$ENV_LOCAL"
+      chmod 600 "$ENV_LOCAL"
+      echo "   ✅ 已写入 $ENV_LOCAL (600)"
+    fi
+  fi
+  # --- 5) 基础安装 ---
+  echo ""
+  echo "⑤ 运行 install (env/venv/数据目录)?"
+  read -rp "   立即 install? [y/N]: " GOI; GOI=${GOI:-n}
+  [[ "${GOI,,}" == "y" ]] && { MODE="install"; do_install || true; }
+  # --- 6) 汇总 ---
+  echo ""
+  echo "=============================================="
+  echo "✅ 向导完成。接下来:"
+  echo "   1. (Serv00 面板) devil www add $WIZ_DOMAIN public_nodejs 或面板 Pages 指向 web/"
+  echo "   2. 建号: cd web && node -e \"console.log(require('./lib/auth.js').createUser('admin','你的强密码','admin'))\""
+  echo "      或启动后在 ~/news-project/admin-credentials.txt 找引导管理员"
+  echo "   3. MCP 接入: {\"mcpServers\":{\"global-intelligence\":{\"url\":\"https://$WIZ_DOMAIN/mcp\",\"headers\":{\"Authorization\":\"Bearer <Token>\"}}}}"
+  [[ -n "$WIZ_PORT" ]] && echo "   备用TCP端口: $WIZ_PORT"
+  echo "=============================================="
+}
+
 # ---------------- 入口 ----------------
 
 case "${MODE:-}" in
@@ -468,5 +581,7 @@ case "${MODE:-}" in
   repair)    cmd_repair ;;
   doctor)    cmd_doctor ;;
   uninstall) cmd_uninstall ;;
-  help|*)    cmd_help ;;
+  wizard)    wizard ;;
+  help)      cmd_help ;;
+  *)         echo "未知模式: ${MODE}" >&2; cmd_help; exit 2 ;;
 esac
