@@ -199,7 +199,7 @@ async function handleAdmin(req, res, url, sess) {
     let b = {}; try { b = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); } catch { /* */ }
     const cur = flags.fresh();   // [R12-5] 用真实值打底, 避免 3s 缓存旧值冲掉端点配置
     const nw = b.toggle ? Object.assign({}, cur, { [b.toggle]: !cur[b.toggle] })
-      : Object.assign({ public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate },
+      : Object.assign({}, cur, { public_rest: !!b.public_rest, web_search_api: !!b.web_search_api, ui_gate: !!b.ui_gate },
         b.api_endpoints ? { api_endpoints: Object.fromEntries(Object.entries(b.api_endpoints).filter(([k, v]) => typeof v === 'boolean')) } : {},
         b.api_rpm ? { api_rpm: Object.fromEntries(Object.entries(b.api_rpm).filter(([k, v]) => Number.isFinite(+v) && +v >= 0).map(([k, v]) => [k, Math.min(Math.round(+v), 60)])) } : {},
         Number.isFinite(+b.api_rpm_global) && +b.api_rpm_global > 0 ? { api_rpm_global: Math.min(Math.round(+b.api_rpm_global), 300) } : {},
