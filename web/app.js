@@ -466,6 +466,11 @@ const server = http.createServer(async (req, res) => {
   const done = (code) => logLine({ t: new Date().toISOString(), ip, m: req.method,
     p: url.pathname, code, ms: Date.now() - t0 });
   try {
+    // [R11-P5] 强制 HTTPS: Secure cookie 在 http 下被浏览器丢弃 → 登录死循环; CF 传 x-forwarded-proto
+    if (req.headers['x-forwarded-proto'] === 'http') {
+      res.writeHead(301, { Location: SITE_ORIGIN.replace(/^http:/, 'https:') + url.pathname + (url.search || '') });
+      res.end(); done(301); return;
+    }
     if (url.pathname === '/mcp') {
       if (!bearerOk(req)) {
         res.writeHead(401, { 'WWW-Authenticate': 'Bearer realm="mcp"', 'Cache-Control': 'no-store' });

@@ -194,3 +194,7 @@ fed-press 21 | ecb-press 18 | cnbc-economy 28 | marketwatch-top 72 | investing-e
 
 # R11-P5 收尾 (2026-09-11)
 19 查询复测(源上线 ~14h): 通胀 8→12 | 黄金 21→26 | 美联储 6→7 | ECB 31→33 | 国债收益率 2→3 | 人民币源 3→4 | 央行 34→74 | interest rate 46→48。MLF 0(月度窗口, 靠扩展搜索+cn-rates 源积累)、房价 0(已入扩展映射)。后台开关可视化页 admin-flags.html(受登录门保护)。
+
+## 用户无法登录排查 (2026-09-11)
+web.log 复盘: 用户 login POST 全 200(密码正确) 但随后 / 恒 302; curl 全链路正常 → Secure cookie 在 http 下被浏览器丢弃(rateLimited 计数同源也撞车: 429 on health/categories ×74, 127.0.0.1 全局桶)。
+修复: 强制 HTTPS (x-forwarded-proto http→301 https)。实测 http→301 ✓ 登录带cookie /→200 ✓。
