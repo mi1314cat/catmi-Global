@@ -183,3 +183,8 @@ P0-S1/S2/P1-S3/R5-P0-A 修复均经 QA 独立证实 (fetch done 25→29, ai-work
 # R11-P3 认证与功能开关 (2026-09-11)
 flags.json 三开关(public_rest/web_search_api/ui_gate) + admin /api/admin/flags GET/POST(CSRF) + Web登录门(302→login.html) + /api/search Bearer/session 保护。UI 移出 public/(app-ui.html, 防 Passenger 静态直服绕门), login.html 入 public/ 由 Passenger 直服。
 实测: 未登录/→302 ✓ 登录后/→200 ✓ logout→302 ✓ /api/search 无auth→401 开关开→200 切回→401 ✓ MCP 200 ✓ /api/news 公开 200 ✓。
+
+# R11-P4 经济覆盖矩阵 (实测, 2026-09-11)
+缺口(中文经济): MLF **0** | 逆回购 3 | 房地产 2 | 非农 2 | 日本央行 2 | 国债收益率 2 | 通胀 8 | 利率 6。英文侧较好: interest rate 46 | CPI 32 | ECB 31 | LPR 79 | 原油 44 | 黄金 21。人民币 71 但仅 3 源。
+结论: 瓶颈=①中文财经源不足(总源102, finance 仅11, 无央行官方源) ②无 zh→en 查询扩展。
+方案(下轮): A. sources.seed.json 增量 ~10 源(Fed/ECB 官方RSS, CNBC economy, Google News 中文经济 topic, Investing.com), 逐个服务器验证可达+XML 合法再 seed; B. query.js 经济词 zh→en 扩展(上限2词)。
