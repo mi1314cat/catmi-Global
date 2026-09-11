@@ -772,5 +772,36 @@
   "priority": 1.0,
   "poll_seconds": 3600,
   "adapter": null
+ },
+ {
+  "slug": "investing-economy",
+  "name": "Investing.com Economy",
+  "kind": "rss",
+  "feed_url": "https://www.investing.com/rss/news_14.rss",
+  "site_url": "https://www.investing.com",
+  "category": "finance",
+  "language": "en",
+  "priority": 1.4,
+  "poll_seconds": 900
+ },
+ {
+  "slug": "gnews-cn-business",
+  "name": "Google News 财经 (CN)",
+  "kind": "gnews",
+  "feed_url": "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
+  "category": "finance",
+  "language": "zh",
+  "priority": 1.5,
+  "poll_seconds": 600
+ },
+ {
+  "slug": "gnews-cn-rates",
+  "name": "Google News 中国货币政策 (LPR/MLF/降息)",
+  "kind": "gnews",
+  "feed_url": "https://news.google.com/rss/search?q=LPR+OR+MLF+OR+%E9%99%8D%E6%81%AF+OR+%E5%A4%AE%E8%A1%8C&hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
+  "category": "finance",
+  "language": "zh",
+  "priority": 1.6,
+  "poll_seconds": 600
  }
 ]

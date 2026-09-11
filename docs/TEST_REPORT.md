@@ -188,3 +188,6 @@ flags.json 三开关(public_rest/web_search_api/ui_gate) + admin /api/admin/flag
 缺口(中文经济): MLF **0** | 逆回购 3 | 房地产 2 | 非农 2 | 日本央行 2 | 国债收益率 2 | 通胀 8 | 利率 6。英文侧较好: interest rate 46 | CPI 32 | ECB 31 | LPR 79 | 原油 44 | 黄金 21。人民币 71 但仅 3 源。
 结论: 瓶颈=①中文财经源不足(总源102, finance 仅11, 无央行官方源) ②无 zh→en 查询扩展。
 方案(下轮): A. sources.seed.json 增量 ~10 源(Fed/ECB 官方RSS, CNBC economy, Google News 中文经济 topic, Investing.com), 逐个服务器验证可达+XML 合法再 seed; B. query.js 经济词 zh→en 扩展(上限2词)。
+
+# R11-P4 源落地 (2026-09-11, seed-sources 3 新增/71 更新, 总 74)
+fed-press 21 | ecb-press 18 | cnbc-economy 28 | marketwatch-top 72 | investing-economy 10 | gnews-cn-business 34 | gnews-cn-rates 38 —— 7/7 出文。scan new 44→124。
