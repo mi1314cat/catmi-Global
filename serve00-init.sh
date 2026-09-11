@@ -462,7 +462,7 @@ cmd_uninstall() {
 
 # ==================== 向导模式 (一键安装引导) ====================
 # 用法: bash serve00-init.sh wizard
-#   交互式完成: 域名 → (可选)证书粘贴 → (可选)端口自动申请 → env.local+Token → 汇总
+#   交互式完成: 域名 → (可选)证书粘贴 → env.local+Token → 汇总 (无端口步骤: Web/MCP 走 Passenger 443)
 ENV_LOCAL="$PROJECT/env.local"
 
 wizard_welcome() {
@@ -470,26 +470,6 @@ wizard_welcome() {
   echo "  Global Intelligence 一键安装向导 (Serv00)"
   echo "=============================================="
   echo "原则与 install 相同: 幂等/保守/清单回滚/不出秘密。"
-}
-
-wizard_parse_port_list() {   # 仿 serv00-play 借鉴: 解析 devil port list → 数组
-  PORT_ARRAY=""
-    # 输出行格式: <端口> <typ(tcp/udp)> <描述>; 只取描述含标记的 tcp 项
-  PORT_PORT=$(devil port list 2>/dev/null | awk -v d="$WIZ_PORT_DESC" '$2 ~ /tcp/ && $0 ~ d && $1 ~ /^[0-9]+$/ {print $1}' | tail -1)
-}
-
-wizard_get_port() {          # 借鉴 frankiejun/serv00-play getPort()
-  WIZ_PORT_DESC="${WIZ_PORT_DESC:-gi-news}"
-  wizard_parse_port_list
-  if [[ -n "$PORT_PORT" ]]; then
-    WIZ_PORT="$PORT_PORT"; return 0
-  fi
-  local rt; rt=$(devil port add tcp random "$WIZ_PORT_DESC" 2>/dev/null)
-  if [[ "$rt" == *successfully* || "$rt" == *Ok* ]]; then
-    wizard_parse_port_list
-    if [[ -n "$PORT_PORT" ]]; then WIZ_PORT="$PORT_PORT"; return 0; fi
-  fi
-  return 1
 }
 
 wizard() {
@@ -525,22 +505,10 @@ wizard() {
   else
     echo "ℹ️  Cloudflare 路线: 边缘证书由 CF 处理, Serv00 无需证书。域名解析请指到 CF。"
   fi
-  # --- 3) 端口(可选) ---
+  # (端口说明: Web/MCP 走 Passenger 443, 平台按域名分流 — 无需申请端口)
+  # --- 3) env.local + MCP_TOKEN ---
   echo ""
-  echo "③ 端口"
-  echo "   Web/MCP 走 Passenger 443, 不需要额外端口。此处可选申请一个裸 TCP 端口备用。"
-  read -rp "   尝试自动申请(tcp random)? [y/N]: " WANT_PORT; WANT_PORT=${WANT_PORT:-N}
-  WIZ_PORT=""
-  if [[ "${WANT_PORT,,}" == "y" ]]; then
-    if wizard_get_port; then
-      echo "   ✅devil 自动分配端口: $WIZ_PORT (描述: $WIZ_PORT_DESC)"
-    else
-      echo "   ⚠️ 自动分配失败 — 请到面板 Ports 页手工申请, 然后重启向导或手工记录。"
-    fi
-  fi
-  # --- 4) env.local + MCP_TOKEN ---
-  echo ""
-  echo "④ env.local / MCP_TOKEN"
+  echo "③ env.local / MCP_TOKEN"
   if [[ -f "$ENV_LOCAL" ]]; then
     echo "   已有 $ENV_LOCAL 保持不动(不覆盖秘密)。"
   else
@@ -555,9 +523,9 @@ wizard() {
       echo "   ✅ 已写入 $ENV_LOCAL (600)"
     fi
   fi
-  # --- 5) 基础安装 ---
+  # --- 4) 基础安装 ---
   echo ""
-  echo "⑤ 运行 install (env/venv/数据目录)?"
+  echo "④ 运行 install (env/venv/数据目录)?"
   read -rp "   立即 install? [y/N]: " GOI; GOI=${GOI:-n}
   [[ "${GOI,,}" == "y" ]] && { MODE="install"; do_install || true; }
   # --- 6) 汇总 ---
